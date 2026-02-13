@@ -14,7 +14,7 @@ export default function TranscriptionProgress() {
         setTranscription, setStep, setError, locale
     } = useAppStore();
     const started = useRef(false);
-    const [stage, setStage] = useState<Stage>(provider === 'gemini' ? 'uploading' : 'compressing');
+    const [stage, setStage] = useState<Stage>('compressing');
     const [progress, setProgress] = useState(0);
     const [compressionInfo, setCompressionInfo] = useState<string>('');
 
@@ -33,8 +33,26 @@ export default function TranscriptionProgress() {
 
     const runGeminiFlow = async (key: string) => {
         try {
+            // Step 1: Process (extract audio/compress)
+            setStage('compressing');
+            const processed = await processAudioForUpload(file!, (_stage, p) => {
+                setProgress(p);
+            });
+
+            if (processed.wasCompressed) {
+                const saved = Math.round((1 - processed.compressedSize / processed.originalSize) * 100);
+                const sizeStr = (processed.compressedSize / (1024 * 1024)).toFixed(1);
+                setCompressionInfo(
+                    locale === 'es'
+                        ? `Audio extraído: ${sizeStr}MB (-${saved}%)`
+                        : `Audio extracted: ${sizeStr}MB (-${saved}%)`
+                );
+            }
+
+            // Step 2: Upload to Gemini
             setStage('uploading');
-            const text = await transcribeWithGemini(file!, key, (p) => {
+            setProgress(0);
+            const text = await transcribeWithGemini(processed.chunks[0], key, (p) => {
                 if (p < 0.5) {
                     setStage('uploading');
                 } else {
@@ -108,16 +126,19 @@ export default function TranscriptionProgress() {
     const current = stageConfig[stage];
     const Icon = current.icon;
 
-    // Steps depend on provider
-    const steps = provider === 'gemini'
-        ? [
-            { key: 'uploading', label: locale === 'es' ? 'Subir' : 'Upload' },
-            { key: 'transcribing', label: locale === 'es' ? 'Transcribir' : 'Transcribe' },
-        ]
-        : [
-            { key: 'compressing', label: locale === 'es' ? 'Comprimir' : 'Compress' },
-            { key: 'transcribing', label: locale === 'es' ? 'Transcribir' : 'Transcribe' },
-        ];
+    // Unified steps
+    const steps = [
+        { key: 'compressing', label: locale === 'es' ? (provider === 'gemini' ? 'Extraer Audio' : 'Comprimir') : (provider === 'gemini' ? 'Extract Audio' : 'Compress') },
+        { key: 'uploading', label: locale === 'es' ? 'Subir' : 'Upload' }, // Only visible for Gemini mainly
+        { key: 'transcribing', label: locale === 'es' ? 'Transcribir' : 'Transcribe' },
+    ];
+
+    // Filter out uploading for Groq (it's part of transcribing there usually, or fast enough)
+    // Actually, Groq flow doesn't use 'uploading' stage explicitly in this UI config, 
+    // but let's keep it simple. Groq flow: compressing -> transcribing.
+    const visibleSteps = provider === 'gemini'
+        ? steps
+        : [steps[0], steps[2]];
 
     const currentIdx = steps.findIndex(s => s.key === stage);
 
@@ -125,7 +146,7 @@ export default function TranscriptionProgress() {
         <div className="text-center space-y-6">
             {/* Stage indicator */}
             <div className="flex items-center justify-center gap-4 mb-2">
-                {steps.map((s, i) => (
+                {visibleSteps.map((s, i) => (
                     <React.Fragment key={s.key}>
                         {i > 0 && <div className="w-8 h-px" style={{ background: 'var(--border-subtle)' }}></div>}
                         <div className="flex items-center gap-2">
