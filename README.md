@@ -6,11 +6,11 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
-A professional-grade, privacy-first web application that transforms audio recordings into structured academic notes using advanced AI models. Built with **Astro**, **React**, and **TypeScript** for a blazing fast, zero-latency experience.
+Elevate your notes using advanced AI models and BYOK security. A privacy-first application web that transforms audio recordings into structured academic notes and professional PDF edit-export capabilities. Built with **Astro**, **React**, and **TypeScript** for a blazing fast, zero-latency experience.
 
 **BYOK Edition**: Bring Your Own Key. No subscriptions, no backend data storage, and 100% client-side processing for maximum privacy.
 
-![Project Preview](public/preview.png)
+![Project Preview](assets/preview.png)
 
 ---
 
