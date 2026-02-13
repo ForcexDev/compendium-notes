@@ -40,7 +40,8 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
             analyserRef.current = analyser;
 
             // Setup Recorder
-            const mediaRecorder = new MediaRecorder(stream);
+            const mimeType = getSupportedMimeType();
+            const mediaRecorder = new MediaRecorder(stream, { mimeType });
             mediaRecorderRef.current = mediaRecorder;
             chunksRef.current = [];
 
@@ -87,13 +88,23 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
         }
     };
 
+    const getSupportedMimeType = () => {
+        const types = ['audio/mp4', 'audio/webm', 'audio/ogg', 'audio/wav'];
+        for (const type of types) {
+            if (MediaRecorder.isTypeSupported(type)) return type;
+        }
+        return 'audio/webm'; // Fallback
+    };
+
     const handleStop = () => {
         stopRecordingCleanup();
 
         // Wait a tiny bit for last chunk
         setTimeout(() => {
-            const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-            const file = new File([blob], `recording_${new Date().toISOString()}.webm`, { type: 'audio/webm' });
+            const mimeType = getSupportedMimeType();
+            const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.split('/')[1];
+            const blob = new Blob(chunksRef.current, { type: mimeType });
+            const file = new File([blob], `recording_${new Date().toISOString()}.${extension}`, { type: mimeType });
             onRecordingComplete(file);
         }, 200);
     };
