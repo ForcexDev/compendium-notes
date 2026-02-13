@@ -1,0 +1,233 @@
+const GROQ_API_URL = 'https://api.groq.com/openai/v1';
+
+/**
+ * Transcribe a single audio file (must be ≤ 25MB)
+ */
+async function transcribeSingleFile(
+    file: File,
+    apiKey: string,
+): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('model', 'whisper-large-v3-turbo');
+    formData.append('response_format', 'verbose_json');
+    formData.append('language', 'es');
+    formData.append('timestamp_granularities[]', 'segment');
+
+    const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+            throw new Error('API Key inválida. Verifica tu key de Groq.');
+        }
+        if (response.status === 429) {
+            throw new Error('Límite de Groq alcanzado. Espera un momento.');
+        }
+        throw new Error(errorData?.error?.message || `Error del servidor (${response.status})`);
+    }
+
+    const data = await response.json();
+
+    if (data.segments && data.segments.length > 0) {
+        return data.segments
+            .map((seg: any) => {
+                const mins = Math.floor(seg.start / 60);
+                const secs = Math.floor(seg.start % 60);
+                const timestamp = `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
+                return `${timestamp} ${seg.text.trim()}`;
+            })
+            .join('\n');
+    }
+
+    return data.text || '';
+}
+
+/**
+ * Transcribe one or multiple chunks sequentially
+ */
+export async function transcribeAudio(
+    chunks: File[],
+    apiKey: string,
+    onProgress?: (progress: number) => void
+): Promise<string> {
+    if (!apiKey) throw new Error('API Key no configurada');
+    if (!chunks.length) throw new Error('No hay archivos para transcribir');
+
+    const results: string[] = [];
+    const total = chunks.length;
+
+    for (let i = 0; i < total; i++) {
+        onProgress?.((i / total) * 0.9);
+        const text = await transcribeSingleFile(chunks[i], apiKey);
+        results.push(text);
+        onProgress?.(((i + 1) / total) * 0.9);
+    }
+
+    onProgress?.(1);
+    return results.join('\n\n');
+}
+
+// ~4 chars per token on average. Groq free tier = 12k TPM for Llama 3.3 70B.
+// System prompt ~800 tokens, so keep user content under ~8k tokens (~32k chars).
+const MAX_CHARS_PER_CHUNK = 28000;
+const DELAY_BETWEEN_CHUNKS_MS = 6000; // avoid rate limits
+
+export async function organizeNotes(
+    transcription: string,
+    apiKey: string,
+    onStep?: (step: number) => void
+): Promise<string> {
+    if (!apiKey) throw new Error('API Key no configurada');
+    if (!transcription) throw new Error('No hay transcripción para organizar');
+
+    onStep?.(1);
+
+    // Split transcription into manageable chunks
+    const chunks = splitTranscription(transcription, MAX_CHARS_PER_CHUNK);
+
+    if (chunks.length === 1) {
+        // Single chunk — full format
+        const result = await callLlama(chunks[0], apiKey, 'full');
+        onStep?.(4);
+        if (!result) throw new Error('La IA no generó contenido. Intenta de nuevo.');
+        onStep?.(5);
+        return result;
+    }
+
+    // Multiple chunks — process each, then merge
+    onStep?.(2);
+    const partResults: string[] = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+        const isFirst = i === 0;
+        const partLabel = `Parte ${i + 1}/${chunks.length}`;
+        const result = await callLlama(
+            chunks[i],
+            apiKey,
+            isFirst ? 'first' : 'continuation',
+            partLabel
+        );
+        if (result) partResults.push(result);
+
+        // Delay between chunks to avoid TPM limits
+        if (i < chunks.length - 1) {
+            await new Promise(r => setTimeout(r, DELAY_BETWEEN_CHUNKS_MS));
+        }
+        onStep?.(2 + Math.floor(((i + 1) / chunks.length) * 2));
+    }
+
+    onStep?.(5);
+    return partResults.join('\n\n---\n\n');
+}
+
+function splitTranscription(text: string, maxChars: number): string[] {
+    if (text.length <= maxChars) return [text];
+
+    const chunks: string[] = [];
+    const lines = text.split('\n');
+    let current = '';
+
+    for (const line of lines) {
+        if (current.length + line.length + 1 > maxChars && current.length > 0) {
+            chunks.push(current.trim());
+            current = '';
+        }
+        current += line + '\n';
+    }
+    if (current.trim()) chunks.push(current.trim());
+
+    return chunks;
+}
+
+async function callLlama(
+    transcriptionChunk: string,
+    apiKey: string,
+    mode: 'full' | 'first' | 'continuation',
+    partLabel?: string,
+): Promise<string | null> {
+    const systemPrompt = mode === 'full' || mode === 'first'
+        ? `Eres un asistente experto en crear apuntes académicos estructurados. Tu tarea es organizar una transcripción de audio en apuntes profesionales y claros.
+
+FORMATO DE SALIDA (Markdown):
+
+## Resumen
+- [Punto 1: máximo 2 líneas]
+- [Punto 2: máximo 2 líneas]
+- [Punto 3: máximo 2 líneas]
+(3-5 bullets)
+
+## Conceptos Clave
+**Término 1**: Breve explicación
+**Término 2**: Breve explicación
+
+## Definiciones
+> **[Concepto]**: [Definición textual del audio]
+
+## Contenido
+
+### [00:00] Introducción
+[Transcripción de esta sección organizada y limpia]
+
+### [MM:SS] [Título de sección]
+[Transcripción de esta sección organizada y limpia]
+
+INSTRUCCIONES IMPORTANTES:
+- Mantén el lenguaje académico pero claro
+- Resalta términos técnicos con **bold**
+- Los timestamps deben estar en formato [MM:SS]
+- Divide en secciones lógicas cada 3-5 minutos aproximadamente
+- Corrige errores gramaticales de la transcripción
+- Elimina muletillas y repeticiones innecesarias
+- Si no hay definiciones claras en el audio, omite la sección de Definiciones`
+        : `Eres un asistente experto en crear apuntes académicos. Esta es una CONTINUACIÓN de una transcripción larga. Organiza SOLO esta parte en secciones del contenido (no repitas el Resumen ni Conceptos Clave).
+
+FORMATO DE SALIDA (Markdown):
+### [MM:SS] [Título de sección]
+[Contenido organizado]
+
+INSTRUCCIONES:
+- Mantén el lenguaje académico pero claro
+- Resalta términos técnicos con **bold**
+- Usa timestamps [MM:SS]
+- Corrige errores gramaticales
+- Elimina muletillas`;
+
+    const userContent = partLabel
+        ? `${partLabel} — AUDIO TRANSCRITO:\n\n${transcriptionChunk}\n\nOrganiza esta parte de la transcripción.`
+        : `AUDIO TRANSCRITO:\n\n${transcriptionChunk}\n\nOrganiza esta transcripción en apuntes estructurados siguiendo el formato indicado.`;
+
+    const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent },
+            ],
+            temperature: 0.3,
+            max_tokens: 4000,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+            // Wait and retry once
+            await new Promise(r => setTimeout(r, 10000));
+            return callLlama(transcriptionChunk, apiKey, mode, partLabel);
+        }
+        throw new Error(errorData?.error?.message || `Error del servidor (${response.status})`);
+    }
+
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || null;
+}

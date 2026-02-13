@@ -1,0 +1,28 @@
+{
+  "name": "smart-class-notes",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Premium web app to convert recorded audio classes into structured notes with downloadable PDF",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/react": "^4.2.0",
+    "@astrojs/tailwind": "^6.0.2",
+    "@breezystack/lamejs": "^1.2.7",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "astro": "^5.3.0",
+    "framer-motion": "^12.4.7",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "lucide-react": "^0.474.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "zustand": "^5.0.3"
+  }
+}

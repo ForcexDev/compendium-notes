@@ -1,0 +1,57 @@
+---
+import { translations } from '../../lib/i18n';
+---
+
+<footer class="border-t border-[var(--border-subtle)] py-12 sm:py-16">
+  <div class="container-page">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-12 mb-12">
+      <!-- Product -->
+      <div>
+        <h4 class="text-sm font-medium text-[var(--text-primary)] mb-4" data-i18n="footer.product">Producto</h4>
+        <ul class="space-y-2.5">
+          <li><a href="#features" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.features">Características</a></li>
+          <li><a href="#pricing" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.pricing">Precios</a></li>
+          <li><a href="/app" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline">App</a></li>
+        </ul>
+      </div>
+
+      <!-- Resources -->
+      <div>
+        <h4 class="text-sm font-medium text-[var(--text-primary)] mb-4" data-i18n="footer.resources">Recursos</h4>
+        <ul class="space-y-2.5">
+          <li><a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.groq">Consola Groq</a></li>
+          <li><a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.gemini">Consola Gemini</a></li>
+          <li><a href="https://github.com" target="_blank" rel="noopener noreferrer" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.github">GitHub</a></li>
+        </ul>
+      </div>
+
+      <!-- Legal -->
+      <div>
+        <h4 class="text-sm font-medium text-[var(--text-primary)] mb-4" data-i18n="footer.legal">Legal</h4>
+        <ul class="space-y-2.5">
+          <li><a href="/privacy" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.privacy">Privacidad</a></li>
+          <li><a href="/terms" class="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors no-underline" data-i18n="footer.terms">Términos</a></li>
+        </ul>
+      </div>
+
+      <!-- Brand + Language -->
+      <div>
+        <div class="flex items-center gap-2.5 mb-4">
+          <div class="w-7 h-7 rounded-md bg-[var(--accent)] flex items-center justify-center text-white font-semibold text-xs">S</div>
+          <span class="text-sm font-medium text-[var(--text-primary)]">Smart Class Notes</span>
+        </div>
+        <button id="lang-toggle-footer" class="btn-ghost text-xs px-3 py-1.5">
+          EN
+        </button>
+      </div>
+    </div>
+
+    <hr class="divider mb-6" />
+
+    <p class="text-xs text-[var(--text-muted)]">
+      © 2026 <span data-i18n="footer.copyright">Smart Class Notes. Open Source.</span>
+    </p>
+  </div>
+</footer>
+
+

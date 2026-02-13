@@ -1,0 +1,82 @@
+---
+import '../styles/global.css';
+import { translations } from '../lib/i18n';
+
+export interface Props {
+  title: string;
+  description?: string;
+  lang?: string;
+}
+
+const {
+  title,
+  description = 'Transform recorded lectures into structured study notes with AI.',
+  lang = 'es',
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang={lang} class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body class="custom-scrollbar">
+    <slot />
+    <script is:inline define:vars={{ translations }}>
+      function getLang() {
+        const stored = localStorage.getItem('scn-lang');
+        if (stored === 'en' || stored === 'es') return stored;
+        return navigator.language.startsWith('en') ? 'en' : 'es';
+      }
+
+      function applyLang(lang) {
+        document.documentElement.lang = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const key = el.getAttribute('data-i18n');
+          if (translations[key] && translations[key][lang]) {
+            el.textContent = translations[key][lang];
+          }
+        });
+        
+        // Update toggle text manually if needed (or use data-i18n on buttons too?)
+        // The buttons just say EN/ES, so manual update is fine.
+        const toggle = document.getElementById('lang-toggle-footer');
+        if (toggle) toggle.textContent = lang === 'es' ? 'EN' : 'ES';
+        const navToggle = document.getElementById('lang-toggle-nav');
+        if (navToggle) navToggle.textContent = lang === 'es' ? 'EN' : 'ES';
+      }
+
+      function toggleLang() {
+        const current = getLang();
+        const next = current === 'es' ? 'en' : 'es';
+        localStorage.setItem('scn-lang', next);
+        applyLang(next);
+      }
+
+      // Initialize
+      try {
+        applyLang(getLang());
+      } catch (e) {
+        console.error('SCN: Init error', e);
+      }
+
+      // Event Delegation for buttons
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (btn) {
+            if (btn.id === 'lang-toggle-nav' || btn.id === 'lang-toggle-footer') {
+                toggleLang();
+            }
+        }
+      });
+      
+      // Make accessible for debugging
+      window.toggleLang = toggleLang;
+    </script>
+  </body>
+</html>

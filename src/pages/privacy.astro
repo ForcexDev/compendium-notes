@@ -1,0 +1,68 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/astro/Navbar.astro';
+import Footer from '../components/astro/Footer.astro';
+---
+
+<Layout title="Política de Privacidad - Smart Class Notes">
+  <Navbar />
+  <main class="container-page py-24 sm:py-32">
+    <div class="max-w-3xl mx-auto">
+      <h1 class="heading-lg mb-8" data-i18n="privacy.title">Política de Privacidad</h1>
+      
+      <div class="space-y-6 text-body">
+        <p data-i18n="privacy.date">Última actualización: 13 de febrero de 2026</p>
+
+        <section>
+          <h2 class="heading-md mb-4 text-[var(--text-primary)]" data-i18n="privacy.intro.title">1. Introducción</h2>
+          <p data-i18n="privacy.intro.desc">
+            Smart Class Notes ("nosotros", "nuestro") respeta su privacidad. Esta Política de Privacidad explica cómo recopilamos, usamos y protegemos su información cuando utiliza nuestra aplicación.
+            Su privacidad es nuestra prioridad: operamos bajo un modelo <strong>Bring Your Own Key (BYOK)</strong>, lo que significa que sus datos más sensibles son procesados directamente por los proveedores de IA (Groq/Google) utilizando sus propias credenciales.
+          </p>
+        </section>
+
+        <section>
+          <h2 class="heading-md mb-4 text-[var(--text-primary)]" data-i18n="privacy.collection.title">2. Recopilación de Datos</h2>
+          <p data-i18n="privacy.collection.desc">
+            No almacenamos sus archivos de audio ni las transcripciones en nuestros servidores. Todo el procesamiento ocurre en su navegador o se envía directamente desde su navegador a las APIs de Groq o Google utilizando su propia API Key.
+          </p>
+          <ul class="list-disc pl-5 mt-2 space-y-2">
+            <li data-i18n="privacy.collection.l1"><strong>API Keys:</strong> Se almacenan localmente en su dispositivo (localStorage). Nunca se envían a nuestros servidores.</li>
+            <li data-i18n="privacy.collection.l2"><strong>Archivos de Audio:</strong> Se procesan temporalmente en su navegador para su reproducción y envío a las APIs.</li>
+            <li data-i18n="privacy.collection.l3"><strong>Transcripciones y Notas:</strong> Se generan y muestran en su navegador. Usted es responsable de guardarlas.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 class="heading-md mb-4 text-[var(--text-primary)]" data-i18n="privacy.third.title">3. Uso de Servicios de Terceros</h2>
+          <p data-i18n="privacy.third.desc">
+            Utilizamos servicios de terceros para el procesamiento de IA. Al usar Smart Class Notes, usted también está sujeto a las políticas de privacidad de:
+          </p>
+          <ul class="list-disc pl-5 mt-2 space-y-2">
+            <li><a href="https://groq.com/privacy" target="_blank" class="text-[var(--accent)] hover:underline">Groq</a></li>
+            <li><a href="https://policies.google.com/privacy" target="_blank" class="text-[var(--accent)] hover:underline">Google (Gemini)</a></li>
+          </ul>
+        </section>
+
+        <section>
+          <h2 class="heading-md mb-4 text-[var(--text-primary)]" data-i18n="privacy.changes.title">4. Cambios en esta Política</h2>
+          <p data-i18n="privacy.changes.desc">
+            Podemos actualizar nuestra Política de Privacidad de vez en cuando. Le notificaremos de cualquier cambio publicando la nueva política en esta página.
+          </p>
+        </section>
+
+        <section>
+          <h2 class="heading-md mb-4 text-[var(--text-primary)]" data-i18n="privacy.contact.title">5. Contacto</h2>
+          <p data-i18n="privacy.contact.desc">
+            Si tiene preguntas sobre esta Política de Privacidad, por favor contáctenos a través de nuestro repositorio en GitHub.
+          </p>
+        </section>
+      </div>
+      
+      <div class="mt-12 pt-8 border-t border-[var(--border-subtle)]">
+        <a href="/" class="btn-ghost" data-i18n="privacy.back">Volver al inicio</a>
+      </div>
+    </div>
+  </main>
+  <Footer />
+</Layout>

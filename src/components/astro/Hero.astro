@@ -1,0 +1,76 @@
+---
+---
+
+<section class="relative min-h-[100vh] flex items-center justify-center overflow-hidden">
+  <!-- Background -->
+  <div class="absolute inset-0 grid-bg opacity-40"></div>
+  <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] rounded-full" style="background: radial-gradient(ellipse, rgba(139,92,246,0.08), transparent 70%);"></div>
+
+  <div class="container-page relative z-10 text-center py-32 sm:py-40 lg:py-48">
+    <!-- Title -->
+    <h1 class="heading-xl max-w-4xl mx-auto mb-6" id="hero-title">
+      <span data-i18n="hero.title.line1">Convierte clases</span><br />
+      <span class="gradient-text" data-i18n="hero.title.line2">en conocimiento</span>
+    </h1>
+
+    <!-- Subtitle -->
+    <p class="text-body max-w-xl mx-auto mb-10" id="hero-subtitle" data-i18n="hero.subtitle">
+      Transcribe audio con IA. Organiza apuntes automáticamente. Descarga PDFs profesionales.
+    </p>
+
+    <!-- CTAs -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+      <a href="/app" class="btn-filled px-6 py-3" id="hero-cta-start" data-i18n="hero.cta.start">Comenzar</a>
+      <a href="#process" class="btn-ghost px-6 py-3" id="hero-cta-how" data-i18n="hero.cta.how">Cómo funciona</a>
+    </div>
+
+    <!-- Product Preview -->
+    <div class="mt-20 max-w-3xl mx-auto">
+      <div class="surface-elevated p-1 rounded-xl">
+        <div class="bg-[var(--bg-primary)] rounded-lg px-5 py-4 sm:px-8 sm:py-6">
+          <!-- Window chrome -->
+          <div class="flex items-center gap-2 mb-5">
+            <div class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></div>
+            <span class="ml-3 text-xs text-[var(--text-muted)] font-mono">smart-class-notes</span>
+          </div>
+          <!-- Content -->
+          <div class="space-y-3">
+            <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+              <div class="flex justify-start">
+                <div class="w-9 h-9 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                </div>
+              </div>
+              <div class="text-center">
+                <div class="text-sm font-medium text-[var(--text-primary)]" data-i18n="hero.preview.filename">clase_calculo.mp3</div>
+                <div class="text-xs text-[var(--text-muted)]">47:32 — 23.4 MB</div>
+              </div>
+              <div class="flex justify-end">
+                <span class="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" data-i18n="hero.preview.status">Completado</span>
+              </div>
+            </div>
+            <div class="w-full h-1.5 rounded-full bg-[var(--bg-tertiary)] overflow-hidden">
+              <div class="h-full rounded-full bg-[var(--accent)]" style="width: 100%"></div>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="bg-[var(--bg-tertiary)] rounded-lg p-2.5">
+                <div class="text-xs text-[var(--text-muted)] mb-0.5" data-i18n="hero.preview.summary">Resumen</div>
+                <div class="text-xs text-[var(--text-secondary)]" data-i18n="hero.preview.summary.val">5 puntos clave</div>
+              </div>
+              <div class="bg-[var(--bg-tertiary)] rounded-lg p-2.5">
+                <div class="text-xs text-[var(--text-muted)] mb-0.5" data-i18n="hero.preview.concepts">Conceptos</div>
+                <div class="text-xs text-[var(--text-secondary)]" data-i18n="hero.preview.concepts.val">12 términos</div>
+              </div>
+              <div class="bg-[var(--bg-tertiary)] rounded-lg p-2.5">
+                <div class="text-xs text-[var(--text-muted)] mb-0.5" data-i18n="hero.preview.pdf">PDF</div>
+                <div class="text-xs text-[var(--text-secondary)]" data-i18n="hero.preview.pdf.val">8 páginas</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
