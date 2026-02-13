@@ -16,7 +16,7 @@ A professional-grade, privacy-first web application that transforms audio record
 
 ## 🌐 Live Demo
 
-Try the application immediately: **[smart-class-notes.vercel.app](https://smart-class-notes.vercel.app/)** *(Replace with your actual URL)*
+Try the application immediately: **[smart-class-notes.vercel.app](https://smart-class-notes.vercel.app/)**
 
 The web application runs entirely in your browser. Simply enter your free **Groq** or **Google Gemini** API key to start processing lectures, meetings, and voice notes instantly.
 
