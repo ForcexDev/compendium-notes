@@ -96,8 +96,8 @@ async function compressAudio(
     const monoData = getMono(audioBuffer);
     onProgress?.(0.4);
 
-    // Encode to MP3
-    const mp3Data = encodeMp3(monoData, TARGET_SAMPLE_RATE, TARGET_BITRATE, onProgress);
+    // Encode to MP3 (Async via Worker)
+    const mp3Data = await encodeMp3(monoData, TARGET_SAMPLE_RATE, TARGET_BITRATE, onProgress);
 
     const mp3Blob = new Blob(mp3Data as unknown as BlobPart[], { type: 'audio/mpeg' });
     const mp3File = new File([mp3Blob], file.name.replace(/\.[^.]+$/, '') + '_compressed.mp3', {
@@ -139,40 +139,42 @@ function getMono(buffer: AudioBuffer): Int16Array {
 }
 
 /**
- * Encode Int16Array PCM to MP3 using lamejs
+ * Encode Int16Array PCM to MP3 using a Web Worker to prevent UI freeze
  */
 function encodeMp3(
     samples: Int16Array,
     sampleRate: number,
-    bitrate: number,
+    bitrate: number, // Unused in worker (hardcoded to 64 for now)
     onProgress?: (progress: number) => void
-): Uint8Array[] {
-    const encoder = new Mp3Encoder(1, sampleRate, bitrate);
-    const blockSize = 1152;
-    const mp3Data: Uint8Array[] = [];
-    const totalBlocks = Math.ceil(samples.length / blockSize);
+): Promise<Uint8Array[]> {
 
-    for (let i = 0; i < samples.length; i += blockSize) {
-        const block = samples.subarray(i, Math.min(i + blockSize, samples.length));
-        const encoded = encoder.encodeBuffer(block);
-        if (encoded.length > 0) {
-            mp3Data.push(new Uint8Array(encoded.buffer, encoded.byteOffset, encoded.byteLength));
-        }
+    return new Promise((resolve, reject) => {
+        // Use Vite's worker import syntax
+        const worker = new Worker(new URL('./audio-encoder.worker.js', import.meta.url), { type: 'module' });
 
-        // Progress: 0.4 → 0.95
-        if (onProgress && i % (blockSize * 100) === 0) {
-            const blockProgress = (i / blockSize) / totalBlocks;
-            onProgress(0.4 + blockProgress * 0.55);
-        }
-    }
+        worker.onmessage = (e) => {
+            const { type, progress, mp3Data, error } = e.data;
 
-    const flushed = encoder.flush();
-    if (flushed.length > 0) {
-        mp3Data.push(new Uint8Array(flushed.buffer, flushed.byteOffset, flushed.byteLength));
-    }
+            if (type === 'progress') {
+                // Map 0-1 progress to 0.4-1 range in our overall flow
+                onProgress?.(0.4 + progress * 0.6);
+            } else if (type === 'complete') {
+                worker.terminate();
+                resolve(mp3Data);
+            } else if (type === 'error') {
+                worker.terminate();
+                reject(new Error(error));
+            }
+        };
 
-    onProgress?.(1);
-    return mp3Data;
+        worker.onerror = (err) => {
+            worker.terminate();
+            reject(err);
+        };
+
+        // Send data
+        worker.postMessage({ pcmData: samples, sampleRate });
+    });
 }
 
 /**

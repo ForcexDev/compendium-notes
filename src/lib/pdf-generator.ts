@@ -141,7 +141,7 @@ export function generatePdf(options: PdfOptions, action: 'save' | 'blob' = 'save
     // ===== HEADER =====
     if (config.headerBg && style === 'cornell') {
         doc.setFillColor(...config.headerColor!);
-        doc.rect(0, 0, pageWidth, 40, 'F');
+        doc.rect(0, 0, pageWidth, 50, 'F'); // Aumentado de 40 a 50 para dar aire
         y = 15;
     }
 
@@ -164,16 +164,21 @@ export function generatePdf(options: PdfOptions, action: 'save' | 'blob' = 'save
     metaText += `  •  Smart Class Notes`;
 
     doc.text(metaText, margin, y);
-    y += 10;
+    y += 6; // Reducido de 10 a 6
 
     // Separator
     if (config.lineSeparator || style === 'minimalista') {
         doc.setDrawColor(...config.primaryColor);
         doc.setLineWidth(0.5);
         doc.line(margin, y, pageWidth - margin, y);
-        y += 10;
+        y += 8; // Reducido de 10 a 8
     } else {
         y += 5;
+    }
+
+    // Cornell: Ensure content starts below the gray header
+    if (style === 'cornell' && y < 55) {
+        y = 55;
     }
 
     // Cornell Vertical Line (Left Column)

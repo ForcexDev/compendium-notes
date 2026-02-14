@@ -24,8 +24,8 @@ export const translations = {
     },
     'features.transcribe.title': { es: 'Transcripción Dual', en: 'Dual Transcription' },
     'features.transcribe.desc': {
-        es: 'Elige entre la velocidad extrema de Whisper (Groq) o el razonamiento multimodal de Gemini Flash 2.0.',
-        en: 'Choose between Whisper extreme speed (Groq) or Gemini Flash 2.0 multimodal reasoning.',
+        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento multimodal de Gemini Flash 2.0.',
+        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini Flash 2.0 multimodal reasoning.',
     },
     'features.organize.title': { es: 'Organización Inteligente', en: 'Smart Organization' },
     'features.organize.desc': {
@@ -72,9 +72,9 @@ export const translations = {
 
     // Groq Card
     'pricing.groq.title': { es: 'Velocidad', en: 'Speed' },
-    'pricing.groq.desc': { es: 'Ideal para clases estándar', en: 'Ideal for standard classes' },
+    'pricing.groq.desc': { es: 'Ideal para clases estándar (Whisper + Llama)', en: 'Ideal for standard classes (Whisper + Llama)' },
     'pricing.groq.price': { es: '$0', en: '$0' },
-    'pricing.groq.f1': { es: 'Modelo Whisper V3 Turbo', en: 'Whisper V3 Turbo Model' },
+    'pricing.groq.f1': { es: 'Modelo Whisper V3 Turbo + Llama', en: 'Whisper V3 Turbo + Llama Model' },
     'pricing.groq.f2': { es: 'Transcripción ultra-rápida', en: 'Ultra-fast transcription' },
     'pricing.groq.f3': { es: 'Mejor para audios < 1 hora', en: 'Best for audios < 1 hour' },
     'pricing.groq.btn': { es: 'Obtener Key de Groq', en: 'Get Groq Key' },
@@ -126,19 +126,20 @@ export const translations = {
     'app.upload.formats': { es: 'MP3, MP4, WAV, M4A, MOV — Máx. 200MB', en: 'MP3, MP4, WAV, M4A, MOV — Max. 200MB' },
     'app.upload.select': { es: 'Seleccionar archivo', en: 'Select file' },
     'app.upload.transcribe': { es: 'Transcribir con IA', en: 'Transcribe with AI' },
+    'app.upload.remove': { es: 'Eliminar archivo', en: 'Remove file' },
     'app.record.start': { es: 'Grabar Audio', en: 'Record Audio' },
     'app.record.stop': { es: 'Detener', en: 'Stop' },
     'app.record.recording': { es: 'Grabando', en: 'Recording' },
     'app.record.cancel': { es: 'Cancelar', en: 'Cancel' },
     'app.transcribing': { es: 'Transcribiendo...', en: 'Transcribing...' },
     'app.transcribing.desc': {
-        es: 'Procesando audio con Whisper V3 Turbo',
-        en: 'Processing audio with Whisper V3 Turbo',
+        es: 'Procesando audio rápido con Whisper + Llama 4 Scout',
+        en: 'Fast audio processing with Whisper + Llama 4 Scout',
     },
     'app.ai.title': { es: 'Organizando con IA', en: 'Organizing with AI' },
     'app.ai.desc': {
-        es: 'Llama 3.3 70B está creando tus apuntes',
-        en: 'Llama 3.3 70B is creating your notes',
+        es: 'Llama 4 Scout está creando tus apuntes',
+        en: 'Llama 4 Scout is creating your notes',
     },
     'app.ai.step1': { es: 'Analizando contenido...', en: 'Analyzing content...' },
     'app.ai.step2': { es: 'Extrayendo conceptos clave...', en: 'Extracting key concepts...' },

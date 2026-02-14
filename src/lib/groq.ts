@@ -7,6 +7,7 @@ async function transcribeSingleFile(
     file: File,
     apiKey: string,
 ): Promise<string> {
+    console.log(`[Groq] Iniciando transcripción de ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
     const formData = new FormData();
     formData.append('file', file);
     formData.append('model', 'whisper-large-v3-turbo');
@@ -14,37 +15,54 @@ async function transcribeSingleFile(
     formData.append('language', 'es');
     formData.append('timestamp_granularities[]', 'segment');
 
-    const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-        body: formData,
-    });
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout per file
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-            throw new Error('API Key inválida. Verifica tu key de Groq.');
+        const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: formData,
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            console.error('[Groq] Error API:', response.status, errorData);
+            if (response.status === 401) {
+                throw new Error('API Key inválida. Verifica tu key de Groq.');
+            }
+            if (response.status === 413) {
+                throw new Error('Archivo demasiado grande para Groq (límite 25MB).');
+            }
+            if (response.status === 429) {
+                throw new Error('Límite de Groq alcanzado. Espera un momento.');
+            }
+            throw new Error(errorData?.error?.message || `Error del servidor (${response.status})`);
         }
-        if (response.status === 429) {
-            throw new Error('Límite de Groq alcanzado. Espera un momento.');
+
+        const data = await response.json();
+        console.log('[Groq] Transcripción completada');
+
+        if (data.segments && data.segments.length > 0) {
+            return data.segments
+                .map((seg: any) => {
+                    const mins = Math.floor(seg.start / 60);
+                    const secs = Math.floor(seg.start % 60);
+                    const timestamp = `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
+                    return `${timestamp} ${seg.text.trim()}`;
+                })
+                .join('\n');
         }
-        throw new Error(errorData?.error?.message || `Error del servidor (${response.status})`);
+
+        return data.text || '';
+    } catch (err: any) {
+        if (err.name === 'AbortError') {
+            throw new Error('La transcripción tardó demasiado (timeout). Intenta con un archivo más corto o comprimido.');
+        }
+        throw err;
     }
-
-    const data = await response.json();
-
-    if (data.segments && data.segments.length > 0) {
-        return data.segments
-            .map((seg: any) => {
-                const mins = Math.floor(seg.start / 60);
-                const secs = Math.floor(seg.start % 60);
-                const timestamp = `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
-                return `${timestamp} ${seg.text.trim()}`;
-            })
-            .join('\n');
-    }
-
-    return data.text || '';
 }
 
 /**
@@ -61,10 +79,15 @@ export async function transcribeAudio(
     const results: string[] = [];
     const total = chunks.length;
 
+    console.log(`[Groq] Iniciando procesamiento de ${total} fragmentos`);
+
     for (let i = 0; i < total; i++) {
-        onProgress?.((i / total) * 0.9);
+        // Start minimal progress (5%) + chunk progress
+        onProgress?.(Math.min(0.95, ((i / total) * 0.9) + 0.05));
+
         const text = await transcribeSingleFile(chunks[i], apiKey);
         results.push(text);
+
         onProgress?.(((i + 1) / total) * 0.9);
     }
 
@@ -211,7 +234,7 @@ INSTRUCCIONES:
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
+            model: 'meta-llama/llama-4-scout-17b-16e-instruct',
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent },

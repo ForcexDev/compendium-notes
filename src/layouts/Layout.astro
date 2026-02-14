@@ -1,6 +1,8 @@
 ---
 import '../styles/global.css';
 import { translations } from '../lib/i18n';
+import GlobalAudioProcessor from '../components/react/GlobalAudioProcessor';
+import { ClientRouter } from 'astro:transitions';
 
 export interface Props {
   title: string;
@@ -41,8 +43,12 @@ const {
     <meta property="twitter:image" content="https://smart-class-notes.vercel.app/og-image.png" />
 
     <title>{title}</title>
+    <ClientRouter />
   </head>
   <body class="custom-scrollbar">
+    <div transition:persist="global-processor">
+        <GlobalAudioProcessor client:only="react" />
+    </div>
     <slot />
     <script is:inline define:vars={{ translations }}>
       function getLang() {

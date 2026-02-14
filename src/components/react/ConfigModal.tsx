@@ -82,7 +82,7 @@ export default function ConfigModal() {
                                 }}
                             >
                                 <span className="block font-semibold mb-0.5">Groq</span>
-                                <span className="block text-[10px] opacity-70">Whisper + Llama 3.3</span>
+                                <span className="block text-[10px] opacity-70">Whisper + Llama 4 Scout</span>
                             </button>
                             <button
                                 onClick={() => setProvider('gemini')}
@@ -102,11 +102,16 @@ export default function ConfigModal() {
                     {/* Groq API Key */}
                     {provider === 'groq' && (
                         <div>
-                            <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
-                                Groq API Key
+                            <label className="text-xs font-medium mb-2 block flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
+                                <span>Groq API Key</span>
+                                {groqInput.length > 5 && (
+                                    <span className={`text-[10px] ${groqInput.startsWith('gsk_') ? 'text-green-500' : 'text-red-500'}`}>
+                                        {groqInput.startsWith('gsk_') ? 'Formato válido' : 'Debe empezar con gsk_'}
+                                    </span>
+                                )}
                             </label>
                             <div className="flex gap-2">
-                                <div className="flex-1 flex items-center rounded-lg px-3" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-default)' }}>
+                                <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${groqInput.length > 0 && !groqInput.startsWith('gsk_') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: groqInput.length > 0 && !groqInput.startsWith('gsk_') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
                                     <input
                                         ref={inputRef}
                                         type={showGroq ? 'text' : 'password'}
@@ -134,11 +139,16 @@ export default function ConfigModal() {
                     {/* Gemini API Key */}
                     {provider === 'gemini' && (
                         <div>
-                            <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
-                                Gemini API Key
+                            <label className="text-xs font-medium mb-2 block flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
+                                <span>Gemini API Key</span>
+                                {geminiInput.length > 5 && (
+                                    <span className={`text-[10px] ${geminiInput.startsWith('AI') ? 'text-green-500' : 'text-red-500'}`}>
+                                        {geminiInput.startsWith('AI') ? 'Formato válido' : 'Debe empezar con AI'}
+                                    </span>
+                                )}
                             </label>
                             <div className="flex gap-2">
-                                <div className="flex-1 flex items-center rounded-lg px-3" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-default)' }}>
+                                <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${geminiInput.length > 0 && !geminiInput.startsWith('AI') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: geminiInput.length > 0 && !geminiInput.startsWith('AI') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
                                     <input
                                         type={showGemini ? 'text' : 'password'}
                                         value={geminiInput}

@@ -1,111 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { Loader2, Shrink, AudioLines, Check, Upload } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
-import { processAudioForUpload } from '../../lib/audio-processor';
-import { transcribeAudio } from '../../lib/groq';
-import { transcribeWithGemini } from '../../lib/gemini';
 
-type Stage = 'compressing' | 'uploading' | 'transcribing';
+// NOTE: Logic moved to GlobalAudioProcessor. This component just renders state.
+type Stage = 'compressing' | 'uploading' | 'transcribing' | 'done' | 'error' | 'idle';
 
 export default function TranscriptionProgress() {
     const {
-        file, apiKey, geminiKey, provider,
-        setTranscription, setStep, setError, locale
+        file, provider, locale,
+        processingState, processingProgress, compressionInfo
     } = useAppStore();
-    const started = useRef(false);
-    const [stage, setStage] = useState<Stage>('compressing');
-    const [progress, setProgress] = useState(0);
-    const [compressionInfo, setCompressionInfo] = useState<string>('');
 
-    useEffect(() => {
-        if (started.current || !file) return;
-        const activeKey = provider === 'gemini' ? geminiKey : apiKey;
-        if (!activeKey) return;
-        started.current = true;
+    // Map internal store processingState to UI stage (simplify "done" and "idle" as fallback)
+    const stage = processingState === 'idle' || processingState === 'done' || processingState === 'error'
+        ? 'compressing' // Default visual state if weird stuff happens
+        : processingState;
 
-        if (provider === 'gemini') {
-            runGeminiFlow(activeKey);
-        } else {
-            runGroqFlow(activeKey);
-        }
-    }, [file, apiKey, geminiKey, provider]);
+    const pct = Math.round(processingProgress * 100);
 
-    const runGeminiFlow = async (key: string) => {
-        try {
-            // Step 1: Process (extract audio/compress)
-            setStage('compressing');
-            const processed = await processAudioForUpload(file!, (_stage, p) => {
-                setProgress(p);
-            });
-
-            if (processed.wasCompressed) {
-                const saved = Math.round((1 - processed.compressedSize / processed.originalSize) * 100);
-                const sizeStr = (processed.compressedSize / (1024 * 1024)).toFixed(1);
-                setCompressionInfo(
-                    locale === 'es'
-                        ? `Audio extraído: ${sizeStr}MB (-${saved}%)`
-                        : `Audio extracted: ${sizeStr}MB (-${saved}%)`
-                );
-            }
-
-            // Step 2: Upload to Gemini
-            setStage('uploading');
-            setProgress(0);
-            const text = await transcribeWithGemini(processed.chunks[0], key, (p) => {
-                if (p < 0.5) {
-                    setStage('uploading');
-                } else {
-                    setStage('transcribing');
-                }
-                setProgress(p);
-            });
-            setTranscription(text);
-            setStep('ai-processing');
-        } catch (err: any) {
-            setError(err.message);
-            setStep('upload');
-        }
-    };
-
-    const runGroqFlow = async (key: string) => {
-        try {
-            // Step 1: Process (compress + maybe chunk)
-            setStage('compressing');
-            const processed = await processAudioForUpload(file!, (_stage, p) => {
-                setProgress(p);
-            });
-
-            if (processed.wasCompressed) {
-                const saved = Math.round((1 - processed.compressedSize / processed.originalSize) * 100);
-                const sizeStr = (processed.compressedSize / (1024 * 1024)).toFixed(1);
-                setCompressionInfo(
-                    locale === 'es'
-                        ? `Comprimido: ${sizeStr}MB (-${saved}%)${processed.wasChunked ? ` · ${processed.chunks.length} fragmentos` : ''}`
-                        : `Compressed: ${sizeStr}MB (-${saved}%)${processed.wasChunked ? ` · ${processed.chunks.length} chunks` : ''}`
-                );
-            }
-
-            // Step 2: Transcribe
-            setStage('transcribing');
-            setProgress(0);
-            const text = await transcribeAudio(processed.chunks, key, (p) => setProgress(p));
-
-            setTranscription(text);
-            setStep('ai-processing');
-        } catch (err: any) {
-            setError(err.message);
-            setStep('upload');
-        }
-    };
-
-    const pct = Math.round(progress * 100);
-
-    const stageConfig: Record<Stage, { title: string; desc: string; icon: typeof Loader2 }> = {
+    const stageConfig: Record<string, { title: string; desc: string; icon: typeof Loader2 }> = {
         compressing: {
-            title: locale === 'es' ? 'Comprimiendo audio...' : 'Compressing audio...',
-            desc: locale === 'es' ? 'Reduciendo a 16kHz mono para optimizar' : 'Reducing to 16kHz mono for optimization',
-            icon: Shrink,
+            title: locale === 'es'
+                ? (file?.type.startsWith('video/') ? 'Extrayendo audio...' : 'Optimizando audio...')
+                : (file?.type.startsWith('video/') ? 'Extracting audio...' : 'Optimizing audio...'),
+            desc: locale === 'es'
+                ? (file?.type.startsWith('video/') ? 'Separando pista de audio' : 'Reduciendo tamaño para subir más rápido')
+                : (file?.type.startsWith('video/') ? 'Separating audio track' : 'Reducing size for faster upload'),
+            icon: file?.type.startsWith('video/') ? AudioLines : Shrink,
         },
         uploading: {
             title: locale === 'es' ? 'Subiendo a Gemini...' : 'Uploading to Gemini...',
@@ -117,25 +39,28 @@ export default function TranscriptionProgress() {
                 ? (provider === 'gemini' ? 'Transcribiendo con Gemini...' : 'Transcribiendo...')
                 : (provider === 'gemini' ? 'Transcribing with Gemini...' : 'Transcribing...'),
             desc: locale === 'es'
-                ? (provider === 'gemini' ? 'Procesando con Gemini Flash 2.0' : 'Procesando con Whisper V3 Turbo')
-                : (provider === 'gemini' ? 'Processing with Gemini Flash 2.0' : 'Processing with Whisper V3 Turbo'),
+                ? (provider === 'gemini' ? 'Procesando con Gemini Flash 2.0' : 'Procesando con Whisper V3 y Llama 3.3')
+                : (provider === 'gemini' ? 'Processing with Gemini Flash 2.0' : 'Processing with Whisper V3 and Llama 3.3'),
             icon: AudioLines,
         },
     };
 
-    const current = stageConfig[stage];
+    // Safe fallback
+    const current = stageConfig[stage] || stageConfig['compressing'];
     const Icon = current.icon;
 
     // Unified steps
     const steps = [
-        { key: 'compressing', label: locale === 'es' ? (provider === 'gemini' ? 'Extraer Audio' : 'Comprimir') : (provider === 'gemini' ? 'Extract Audio' : 'Compress') },
+        {
+            key: 'compressing',
+            label: locale === 'es'
+                ? (file?.type.startsWith('video/') ? 'Extraer' : 'Optimizar')
+                : (file?.type.startsWith('video/') ? 'Extract' : 'Optimize')
+        },
         { key: 'uploading', label: locale === 'es' ? 'Subir' : 'Upload' }, // Only visible for Gemini mainly
         { key: 'transcribing', label: locale === 'es' ? 'Transcribir' : 'Transcribe' },
     ];
 
-    // Filter out uploading for Groq (it's part of transcribing there usually, or fast enough)
-    // Actually, Groq flow doesn't use 'uploading' stage explicitly in this UI config, 
-    // but let's keep it simple. Groq flow: compressing -> transcribing.
     const visibleSteps = provider === 'gemini'
         ? steps
         : [steps[0], steps[2]];
@@ -217,7 +142,7 @@ export default function TranscriptionProgress() {
                 <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md" style={{
                     background: 'var(--accent-subtle)', border: '1px solid var(--accent)', color: 'var(--accent)',
                 }}>
-                    {provider === 'gemini' ? 'Gemini Flash' : 'Groq Whisper'}
+                    {provider === 'gemini' ? 'Gemini Flash' : 'Llama 4 Scout'}
                 </div>
                 {file && (
                     <div className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-md" style={{

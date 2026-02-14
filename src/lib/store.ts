@@ -5,6 +5,7 @@ export type AppStep = 'upload' | 'transcribing' | 'ai-processing' | 'editor';
 export type PdfStyle = 'minimalista' | 'academico' | 'cornell';
 export type Locale = 'es' | 'en';
 export type Provider = 'groq' | 'gemini';
+export type ProcessingState = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'analyzing' | 'done' | 'error';
 
 interface AppState {
     // Language
@@ -61,6 +62,18 @@ interface AppState {
     // Error
     error: string | null;
     setError: (err: string | null) => void;
+
+    // Global Processing State
+    processingState: ProcessingState;
+    setProcessingState: (state: ProcessingState) => void;
+    processingProgress: number; // 0-1
+    setProcessingProgress: (p: number) => void;
+    compressionInfo: string;
+    setCompressionInfo: (info: string) => void;
+
+    // Actions
+    startProcessing: (file: File) => void;
+    cancelProcessing: () => void;
 
     // Reset
     reset: () => void;
@@ -143,6 +156,16 @@ export const useAppStore = create<AppState>()(
             error: null,
             setError: (error) => set({ error }),
 
+            processingState: 'idle',
+            setProcessingState: (processingState) => set({ processingState }),
+            processingProgress: 0,
+            setProcessingProgress: (processingProgress) => set({ processingProgress }),
+            compressionInfo: '',
+            setCompressionInfo: (compressionInfo) => set({ compressionInfo }),
+
+            startProcessing: (file) => set({ file, processingState: 'compressing', processingProgress: 0, step: 'transcribing', compressionInfo: '' }),
+            cancelProcessing: () => set({ processingState: 'idle', processingProgress: 0, file: null, step: 'upload' }),
+
             reset: () => {
                 // Clear persisted storage for content
                 set({
@@ -155,6 +178,9 @@ export const useAppStore = create<AppState>()(
                     editedNotes: '',
                     title: '',
                     error: null,
+                    processingState: 'idle',
+                    processingProgress: 0,
+                    compressionInfo: '',
                     // Keep keys, provider, locale, style
                 });
             },
@@ -169,6 +195,9 @@ export const useAppStore = create<AppState>()(
                 editedNotes: state.editedNotes,
                 title: state.title,
                 pdfStyle: state.pdfStyle,
+                // Persist processing state so we can recover on refresh/navigation?
+                // For now, let's persist it to be safe, but file objects don't persist well in JSON storage.
+                // We'll rely on the GlobalProcessor being alive for SPA nav. If full reload, we lose the File object anyway.
                 // Keys/Provider/Locale are manually synced for now, let's keep it that way to avoid conflict
                 // or migrate them to persist?
                 // Manual sync is fine. Persist handles the big data.

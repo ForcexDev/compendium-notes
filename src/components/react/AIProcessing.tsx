@@ -24,36 +24,17 @@ export default function AIProcessing() {
     ];
 
     useEffect(() => {
-        if (started.current || !transcription) return;
-        const activeKey = provider === 'gemini' ? geminiKey : apiKey;
-        if (!activeKey) return;
-        started.current = true;
+        // This component is now just a viewer.
+        // The GlobalAudioProcessor handles the logic.
+        // We only need to check if we are done (idempotency/refresh handling)
 
-        const organize = provider === 'gemini' ? organizeNotesWithGemini : organizeNotes;
-
-        organize(transcription, activeKey, (step) => setAiStep(step))
-            .then((notes) => {
-                // Extract Title
-                let cleanNotes = notes;
-                const titleMatch = notes.match(/^## Título\s*\n(.+)/m);
-                if (titleMatch) {
-                    const extractedTitle = titleMatch[1].trim().replace(/\*\*/g, ''); // Remove bold if present
-                    setTitle(extractedTitle);
-
-                    // Remove the Title section from markdown to avoid duplication
-                    // Remove "## Título" and the following line (the title itself) and potential empty lines
-                    cleanNotes = notes.replace(/^## Título\s*\n.+\n*/m, '').trim();
-                }
-
-                setOrganizedNotes(cleanNotes);
-                setAiStep(steps.length - 1);
-                setTimeout(() => setStep('editor'), 600);
-            })
-            .catch((err) => {
-                setError(err.message);
-                setStep('upload');
-            });
-    }, [transcription, apiKey, geminiKey, provider]);
+        const currentNotes = useAppStore.getState().organizedNotes;
+        if (currentNotes) {
+            // Already done?
+            setAiStep(steps.length - 1);
+            setTimeout(() => setStep('editor'), 100);
+        }
+    }, []);
 
     return (
         <div className="text-center space-y-8">

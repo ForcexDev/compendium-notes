@@ -10,7 +10,7 @@ import AIProcessing from './AIProcessing';
 import NotesEditor from './NotesEditor';
 
 export default function AppMain() {
-    const { step, configOpen, setConfigOpen, error, setError, apiKey, geminiKey, provider, locale, setLocale } = useAppStore();
+    const { step, configOpen, setConfigOpen, error, setError, apiKey, geminiKey, provider, locale, setLocale, processingState } = useAppStore();
 
     const isConnected = provider === 'gemini' ? !!geminiKey : !!apiKey;
     const providerLabel = provider === 'gemini' ? 'Gemini' : 'Groq';
@@ -43,13 +43,23 @@ export default function AppMain() {
         const currentStep = useAppStore.getState().step;
         const hasData = !!useAppStore.getState().editedNotes;
         const hasTrans = !!useAppStore.getState().transcription;
+        const processingSt = useAppStore.getState().processingState;
+        const isProcessing = ['compressing', 'uploading', 'transcribing'].includes(processingSt);
+
+        // Guard: If processing, always show progress (unless we have data/editor)
+        if (isProcessing && currentStep === 'upload') {
+            const target = processingSt === 'done' ? 'ai-processing' : 'transcribing';
+            useAppStore.setState({ step: target });
+            history.replaceState({ step: target }, '', `#${target}`);
+            return;
+        }
 
         // Initial check on load
         if (hasData && currentStep === 'upload') {
             // User has data but is at upload? Maybe they want to see their work.
             useAppStore.setState({ step: 'editor' });
             history.replaceState({ step: 'editor' }, '', '#editor');
-        } else if (!hasData && !hasTrans && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
+        } else if (!hasData && !hasTrans && !isProcessing && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
             // Invalid state (reload on processing step without data)
             useAppStore.setState({ step: 'upload' });
             history.replaceState({ step: 'upload' }, '', '#upload');

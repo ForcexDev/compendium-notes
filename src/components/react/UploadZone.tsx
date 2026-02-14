@@ -1,7 +1,7 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Upload, Mic, FileAudio, ArrowRight, Info, Zap, BrainCircuit } from 'lucide-react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, Clock, Volume2, ArrowRight, Sparkles, Zap, BrainCircuit, Info } from 'lucide-react';
 import { t } from '../../lib/i18n';
 
 import AudioRecorder from './AudioRecorder';
@@ -14,7 +14,7 @@ const ACCEPTED = [
 const MAX_SIZE = 200 * 1024 * 1024; // 200MB
 
 export default function UploadZone() {
-    const { setFile, setStep, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file } = useAppStore();
+    const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState } = useAppStore();
     const [isDragging, setIsDragging] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -54,7 +54,7 @@ export default function UploadZone() {
             setError(t('app.error.apikey', locale));
             return;
         }
-        if (file) setStep('transcribing');
+        if (file) startProcessing(file);
     };
 
     const handleRecordingComplete = (f: File) => {
@@ -144,20 +144,27 @@ export default function UploadZone() {
                             <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{file.name}</p>
                             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatSize(file.size)}</p>
                         </div>
-                        <button
-                            onClick={() => setFile(null)}
-                            className="text-xs px-2 py-1 rounded transition-colors"
-                            style={{ color: 'var(--text-muted)' }}
-                        >
-                            ✕
-                        </button>
+                        {processingState === 'idle' && (
+                            <button
+                                onClick={() => setFile(null)}
+                                className="text-xs px-2 py-1 rounded transition-colors"
+                                style={{ color: 'var(--text-muted)' }}
+                                title={t('app.upload.remove', locale) || 'Remove file'}
+                            >
+                                ✕
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
 
             {/* Start button */}
-            {file && (
-                <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}>
+            {file && processingState === 'idle' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-6"
+                >
                     <button
                         onClick={handleStart}
                         className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-medium text-white transition-colors"
@@ -175,12 +182,12 @@ export default function UploadZone() {
                     <div className="p-4 rounded-xl border transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-subtle)' }}>
                         <div className="flex items-center gap-2 mb-2" style={{ color: '#34d399' }}>
                             <Zap size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Groq + Whisper</span>
+                            <span className="text-xs font-semibold uppercase tracking-wider">Whisper + Llama</span>
                         </div>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {locale === 'es'
-                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa compresión inteligente.'
-                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses smart compression.'}
+                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa Whisper V3 Turbo + Llama 4 Scout.'
+                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses Whisper V3 Turbo + Llama 4 Scout.'}
                         </p>
                     </div>
 
