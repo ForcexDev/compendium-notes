@@ -29,18 +29,21 @@ The web application runs entirely in your browser using **client-side processing
 ## ✨ Features
 
 ### Core Capabilities
-- **Dual AI Engine** - Choose between **Groq** (Speed) and **Gemini** (Context/Multimodal).
+- **Dual AI Engine** - Choose between **Groq** (Extreme Speed) and **Gemini** (Massive Context).
+- **Audio Recorder** - Built-in recording functionality directly from your browser.
 - **Privacy-First Architecture** - Keys and data stored exclusively in `localStorage`. Direct Browser-to-API communication.
-- **Smart Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini Flash 2.0** for near-perfect audio-to-text accuracy.
-- **Structured Notes** - Automatically organizes content into Summaries, Key Concepts, Definitions, and Chronological Notes.
-- **Multiple Formats** - Export notes in **Minimalist**, **Academic**, or **Cornell** styles (HTML/PDF).
-- **Multi-Language** - Native support for **English** and **Spanish** interfaces and processing.
+- **Smart Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini Flash 2.0** for lightning-fast audio-to-text.
+- **AI-Powered Organization** - Automatically extracts summaries, concepts, and structured notes using **Llama 4 Scout** or **Gemini**.
+- **Dark & Light Mode** - Full support for both themes with automatic system preference detection.
+- **Premium PDF Styles** - Export in **Minimalist**, **Academic**, or **Cornell** styles.
+- **Modern UX** - Floating Action Buttons, real-time focus indicators, and sleek mobile-responsive design.
+- **Multi-Language** - Native support for **English** and **Spanish**.
 
 ### Technology Stack
 - **Frontend**: Astro (Static Shell) + React (Interactive App)
-- **Styling**: Tailwind CSS + Framer Motion
-- **State Management**: Zustand (Persisted)
-- **AI Integration**: Direct REST API calls to Groq Cloud & Google AI Studio
+- **Styling**: Vanilla CSS + Tailwind + Framer Motion
+- **State Management**: Zustand
+- **AI Integration**: Direct REST API calls to Groq & Google AI Studio
 
 ---
 
@@ -50,13 +53,13 @@ Real-world processing performance for a 1-hour lecture (~50MB audio):
 
 | Provider | Model | Speed | Cost (Free Tier) | Best For |
 |----------|-------|-------|------------------|----------|
-| **Groq** | Whisper v3 + Llama 3.3 70B | ~30 seconds | Free (High Rate Limits) | Speed & Privacy |
-| **Gemini** | Flash 2.0 | ~45 seconds | Free (Generous Quota) | Long Context & Nuance |
+| **Groq** | Whisper v3 + Llama 4 Scout | ~15-30 seconds | Free | Extreme Speed |
+| **Gemini** | Flash 2.0 | ~30-45 seconds | Free | Long Context (+1h) |
 
 **Key Insights:**
-- **Groq** is incredibly fast for transcription and text organization.
-- **Gemini** has a massive context window (1M+ tokens), making it ideal for extremely long recordings.
-- Both providers offer generous free tiers that cover essentially unlimited personal use.
+- **Groq** (via Whisper) is unparalleled in speed for files under 100MB.
+- **Gemini** offers a **1M+ token context window**, perfect for long seminars or multiple files.
+- The **Cornell** template now uses premium geometric fonts (**Outfit**) for superior legibility in the preview.
 
 ---
 

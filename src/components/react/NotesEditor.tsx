@@ -381,14 +381,22 @@ export default function NotesEditor() {
 
                     <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
 
+                    {/* Botón NEW rediseñado - más destacado pero sutil */}
                     <button
                         onClick={reset}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
-                        style={{ color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-all duration-300 whitespace-nowrap group relative overflow-hidden"
+                        style={{
+                            color: 'var(--text-primary)',
+                            border: '1.5px solid var(--accent)',
+                            background: 'var(--accent-subtle)',
+                        }}
                         title={t('app.editor.new', locale)}
                     >
-                        <RotateCcw size={14} />
-                        <span className="hidden md:inline">{t('app.editor.new', locale)}</span>
+                        {/* Subtle shine effect on hover */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+
+                        <RotateCcw size={14} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
+                        <span className="hidden md:inline relative z-10 font-medium">{t('app.editor.new', locale)}</span>
                     </button>
 
                     <button
@@ -511,14 +519,14 @@ export default function NotesEditor() {
                 ) : (
                     <>
                         {/* Markdown Editor */}
-                        <div className={`flex-1 min-h-0 ${activeTab !== 'edit' ? 'hidden sm:block' : ''} transition-all duration-300 relative group`}>
+                        <div className={`flex-1 min-h-0 ${activeTab !== 'edit' ? 'hidden sm:block' : ''} transition-all duration-300 relative group pb-20`}>
                             <div className="absolute inset-0 border-2 border-transparent pointer-events-none group-focus-within:border-[var(--accent)]/10 group-focus-within:bg-[var(--accent)]/[0.01] transition-all duration-500 rounded-lg"></div>
                             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-0 group-focus-within:opacity-100 transition-all duration-500 z-20"></div>
 
                             <textarea
                                 value={editedNotes}
                                 onChange={(e) => setEditedNotes(e.target.value)}
-                                className="w-full h-full resize-none bg-transparent p-4 sm:p-5 text-sm font-mono focus:outline-none custom-scrollbar relative z-10"
+                                className="w-full h-full resize-none bg-transparent p-4 sm:p-5 pb-20 text-sm font-mono focus:outline-none custom-scrollbar relative z-10"
                                 style={{ color: 'var(--text-primary)', lineHeight: 1.7 }}
                                 spellCheck={false}
                             />
@@ -527,8 +535,8 @@ export default function NotesEditor() {
                         {/* Divider */}
                         <div className="hidden sm:block w-px" style={{ background: 'var(--border-subtle)' }}></div>
 
-                        {/* Preview - Márgenes reducidos de p-12 a p-8 */}
-                        <div className={`flex-1 min-h-0 overflow-auto bg-[var(--bg-tertiary)] dark:bg-[var(--bg-primary)] p-4 sm:p-6 custom-scrollbar ${activeTab !== 'preview' ? 'hidden sm:block' : ''}`}>
+                        {/* Preview */}
+                        <div className={`flex-1 min-h-0 overflow-auto bg-[var(--bg-tertiary)] dark:bg-[var(--bg-primary)] p-4 sm:p-6 pb-20 custom-scrollbar ${activeTab !== 'preview' ? 'hidden sm:block' : ''}`}>
                             <div
                                 className="mx-auto shadow-xl rounded-sm min-h-full max-w-[800px]"
                                 style={{
@@ -539,12 +547,41 @@ export default function NotesEditor() {
                                 }}
                             >
                                 <div
-                                    className="text-sm leading-relaxed max-w-none"
                                     dangerouslySetInnerHTML={{ __html: previewHtml }}
                                 />
                             </div>
                         </div>
                     </>
+                )}
+
+                {/* Footer con botón Nuevo Documento - Barra sólida */}
+                {!showTranscript && (
+                    <div
+                        className="absolute bottom-0 left-0 right-0 border-t"
+                        style={{
+                            background: 'var(--bg-secondary)',
+                            borderColor: 'var(--border-subtle)'
+                        }}
+                    >
+                        <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-3">
+                            <button
+                                onClick={reset}
+                                className="w-full max-w-2xl mx-auto flex items-center justify-center gap-2.5 px-4 py-2.5 sm:py-3 rounded-lg font-semibold transition-all duration-200 group relative overflow-hidden"
+                                style={{
+                                    background: 'var(--accent)',
+                                    color: '#fff',
+                                }}
+                            >
+                                {/* Hover shine effect */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+
+                                <RotateCcw size={18} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
+                                <span className="relative z-10 text-sm sm:text-base">
+                                    {locale === 'es' ? 'Nuevo Documento' : 'New Document'}
+                                </span>
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

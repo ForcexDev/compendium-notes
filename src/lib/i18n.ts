@@ -149,6 +149,7 @@ export const translations = {
     'app.editor.markdown': { es: 'Editor Markdown', en: 'Markdown Editor' },
     'app.editor.preview': { es: 'Vista previa', en: 'Preview' },
     'app.editor.new': { es: 'Nuevo', en: 'New' },
+    'app.editor.start_new': { es: 'Crear nuevo documento', en: 'Create new document' },
     'app.editor.copy': { es: 'Copiar', en: 'Copy' },
     'app.editor.copied': { es: 'Copiado', en: 'Copied' },
     'app.editor.download': { es: 'Descargar PDF', en: 'Download PDF' },
