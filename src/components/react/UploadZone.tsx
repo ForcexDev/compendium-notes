@@ -112,6 +112,8 @@ export default function UploadZone() {
             >
                 <input
                     ref={inputRef}
+                    id="file-upload"
+                    name="file-upload"
                     type="file"
                     accept="audio/*,video/*,.mp3,.m4a,.wav,.ogg,.flac,.webm,.mp4,.mov"
                     className="hidden"

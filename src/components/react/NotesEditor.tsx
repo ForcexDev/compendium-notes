@@ -524,6 +524,8 @@ export default function NotesEditor() {
                             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-0 group-focus-within:opacity-100 transition-all duration-500 z-20"></div>
 
                             <textarea
+                                id="notes-editor"
+                                name="notes-editor"
                                 value={editedNotes}
                                 onChange={(e) => setEditedNotes(e.target.value)}
                                 className="w-full h-full resize-none bg-transparent p-4 sm:p-5 pb-20 text-sm font-mono focus:outline-none custom-scrollbar relative z-10"

@@ -10,8 +10,10 @@ export default function ConfigModal() {
     const {
         apiKey, setApiKey, geminiKey, setGeminiKey,
         provider, setProvider, setConfigOpen,
-        pdfStyle, setPdfStyle, locale
+        pdfStyle, setPdfStyle, locale, processingState
     } = useAppStore();
+
+    const isProcessing = processingState !== 'idle' && processingState !== 'done' && processingState !== 'error';
 
     const [groqInput, setGroqInput] = useState('');
     const [geminiInput, setGeminiInput] = useState('');
@@ -106,8 +108,9 @@ export default function ConfigModal() {
                         </label>
                         <div className="grid grid-cols-2 gap-2">
                             <button
-                                onClick={() => setProvider('groq')}
-                                className="py-2.5 px-3 rounded-lg text-xs font-medium transition-all"
+                                onClick={() => !isProcessing && setProvider('groq')}
+                                disabled={isProcessing}
+                                className={`py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${isProcessing ? 'cursor-not-allowed' : ''}`}
                                 style={{
                                     background: provider === 'groq' ? 'var(--accent-subtle)' : 'var(--bg-primary)',
                                     border: `1px solid ${provider === 'groq' ? 'var(--accent)' : 'var(--border-default)'}`,
@@ -118,8 +121,9 @@ export default function ConfigModal() {
                                 <span className="block text-[10px] opacity-70">Whisper + Llama 4 Scout</span>
                             </button>
                             <button
-                                onClick={() => setProvider('gemini')}
-                                className="py-2.5 px-3 rounded-lg text-xs font-medium transition-all"
+                                onClick={() => !isProcessing && setProvider('gemini')}
+                                disabled={isProcessing}
+                                className={`py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${isProcessing ? 'cursor-not-allowed' : ''}`}
                                 style={{
                                     background: provider === 'gemini' ? 'var(--accent-subtle)' : 'var(--bg-primary)',
                                     border: `1px solid ${provider === 'gemini' ? 'var(--accent)' : 'var(--border-default)'}`,
@@ -160,6 +164,8 @@ export default function ConfigModal() {
                                 <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${groqInput.length > 0 && !groqInput.startsWith('gsk_') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: groqInput.length > 0 && !groqInput.startsWith('gsk_') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
                                     <input
                                         ref={inputRef}
+                                        id="groq-api-key"
+                                        name="groq-api-key"
                                         type={showGroq ? 'text' : 'password'}
                                         value={groqInput}
                                         onChange={(e) => setGroqInput(e.target.value)}
@@ -209,6 +215,8 @@ export default function ConfigModal() {
                             <div className="flex gap-2">
                                 <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${geminiInput.length > 0 && !geminiInput.startsWith('AI') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: geminiInput.length > 0 && !geminiInput.startsWith('AI') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
                                     <input
+                                        id="gemini-api-key"
+                                        name="gemini-api-key"
                                         type={showGemini ? 'text' : 'password'}
                                         value={geminiInput}
                                         onChange={(e) => setGeminiInput(e.target.value)}
@@ -269,12 +277,14 @@ export default function ConfigModal() {
                     {/* Save button */}
                     <button
                         onClick={handleSave}
-                        disabled={validating}
+                        disabled={validating || isProcessing}
                         className="w-full py-2.5 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                         style={{ background: saved ? '#10b981' : 'var(--accent)' }}
                     >
                         {validating ? (
                             <><Loader2 size={14} className="animate-spin" /> {t('app.config.verifying', locale)}</>
+                        ) : isProcessing ? (
+                            <><Loader2 size={14} className="animate-spin" /> {t('app.config.processing', locale)}</>
                         ) : saved ? (
                             <><Check size={14} /> {t('app.config.saved', locale)}</>
                         ) : (

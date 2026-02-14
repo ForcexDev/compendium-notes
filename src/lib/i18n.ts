@@ -96,6 +96,10 @@ export const translations = {
     'notif.analyzing': { es: 'Generando notas...', en: 'Generating notes...' },
     'notif.processing': { es: 'Procesando...', en: 'Processing...' },
     'notif.click_view': { es: 'Click para ver resultados', en: 'Click to view results' },
+    'notif.audio_extracted': { es: 'Audio extraído', en: 'Audio extracted' },
+    'notif.audio_optimized': { es: 'Audio optimizado', en: 'Audio optimized' },
+    'notif.fragments': { es: 'fragmentos', en: 'fragments' },
+    'notif.chunks': { es: 'fragmentos', en: 'chunks' },
 
     'pricing.cta.start': { es: 'Comenzar ahora', en: 'Start now' },
     'pricing.cta.key': { es: 'Obtener API Key', en: 'Get API Key' },
@@ -172,6 +176,7 @@ export const translations = {
     'app.config.save': { es: 'Guardar', en: 'Save' },
     'app.config.saved': { es: 'Guardada', en: 'Saved' },
     'app.config.verifying': { es: 'Verificando...', en: 'Verifying...' },
+    'app.config.processing': { es: 'Procesando archivo...', en: 'Processing file...' },
     'app.config.new_key': { es: 'Ingresar una nueva API key', en: 'Enter a new API key' },
     'app.config.active_encrypted': { es: 'Activa y Encriptada', en: 'Active and Encrypted' },
     'app.config.valid_format': { es: 'Formato válido', en: 'Valid format' },

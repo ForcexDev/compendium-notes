@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAppStore } from '../../lib/store';
 import { processAudioForUpload } from '../../lib/audio-processor';
 import { transcribeAudio, organizeNotes } from '../../lib/groq';
+import { t } from '../../lib/i18n';
 import { transcribeWithGemini, organizeNotesWithGemini } from '../../lib/gemini';
 import { updateProjectState, db } from '../../lib/db'; // Import DB
 
@@ -106,13 +107,12 @@ export default function GlobalAudioProcessor() {
                 const saved = Math.round((1 - processed.compressedSize / processed.originalSize) * 100);
                 const sizeStr = (processed.compressedSize / (1024 * 1024)).toFixed(1);
 
-                const labelEs = file!.type.startsWith('video/') ? 'Audio extraído' : 'Audio optimizado';
-                const labelEn = file!.type.startsWith('video/') ? 'Audio extracted' : 'Audio optimized';
+                const label = file!.type.startsWith('video/')
+                    ? t('notif.audio_extracted', locale)
+                    : t('notif.audio_optimized', locale);
 
                 setCompressionInfo(
-                    locale === 'es'
-                        ? `${labelEs}: ${sizeStr}MB (-${saved}%)`
-                        : `${labelEn}: ${sizeStr}MB (-${saved}%)`
+                    `${label}: ${sizeStr}MB (-${saved}%)`
                 );
             }
 
@@ -199,13 +199,14 @@ export default function GlobalAudioProcessor() {
                 const saved = Math.round((1 - processed.compressedSize / processed.originalSize) * 100);
                 const sizeStr = (processed.compressedSize / (1024 * 1024)).toFixed(1);
 
-                const labelEs = file!.type.startsWith('video/') ? 'Audio extraído' : 'Audio optimizado';
-                const labelEn = file!.type.startsWith('video/') ? 'Audio extracted' : 'Audio optimized';
+                const label = file!.type.startsWith('video/')
+                    ? t('notif.audio_extracted', locale)
+                    : t('notif.audio_optimized', locale);
+
+                const fragmentsLabel = t('notif.chunks', locale);
 
                 setCompressionInfo(
-                    locale === 'es'
-                        ? `${labelEs}: ${sizeStr}MB (-${saved}%)${processed.wasChunked ? ` · ${processed.chunks.length} fragmentos` : ''}`
-                        : `${labelEn}: ${sizeStr}MB (-${saved}%)${processed.wasChunked ? ` · ${processed.chunks.length} chunks` : ''}`
+                    `${label}: ${sizeStr}MB (-${saved}%)${processed.wasChunked ? ` · ${processed.chunks.length} ${fragmentsLabel}` : ''}`
                 );
             }
 
