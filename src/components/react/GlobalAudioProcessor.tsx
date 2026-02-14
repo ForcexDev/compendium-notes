@@ -3,6 +3,7 @@ import { useAppStore } from '../../lib/store';
 import { processAudioForUpload } from '../../lib/audio-processor';
 import { transcribeAudio, organizeNotes } from '../../lib/groq';
 import { transcribeWithGemini, organizeNotesWithGemini } from '../../lib/gemini';
+import { updateProjectState, db } from '../../lib/db'; // Import DB
 
 export default function GlobalAudioProcessor() {
     const {
@@ -10,8 +11,15 @@ export default function GlobalAudioProcessor() {
         processingState, setProcessingState,
         setProcessingProgress, setCompressionInfo,
         setTranscription, setStep, setError,
-        setOrganizedNotes, setAiStep, setTitle
+        setOrganizedNotes, setAiStep, setTitle,
+        currentProjectId, restoreSession,
+        activeKey // Get the async getter
     } = useAppStore();
+
+    // Restore session on mount
+    useEffect(() => {
+        restoreSession();
+    }, []);
 
     const processingRef = useRef(false);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -44,24 +52,26 @@ export default function GlobalAudioProcessor() {
         if (processingRef.current) return;
         processingRef.current = true;
 
-        const activeKey = provider === 'gemini' ? geminiKey : apiKey;
-        if (!activeKey) {
-            setError('Falta API Key');
-            setProcessingState('error');
-            setStep('upload');
-            processingRef.current = false;
-            return;
-        }
-
         const run = async () => {
             const signal = abortControllerRef.current?.signal;
             const isCancelled = () => signal?.aborted ?? false;
 
+            // Decrypt key on demand
+            const key = await activeKey();
+
+            if (!key) {
+                setError('Falta API Key');
+                setProcessingState('error');
+                setStep('upload');
+                processingRef.current = false;
+                return;
+            }
+
             try {
                 if (provider === 'gemini') {
-                    await runGeminiFlow(activeKey, isCancelled);
+                    await runGeminiFlow(key, isCancelled);
                 } else {
-                    await runGroqFlow(activeKey, isCancelled);
+                    await runGroqFlow(key, isCancelled);
                 }
             } catch (err: any) {
                 if (isCancelled()) return;
@@ -85,7 +95,10 @@ export default function GlobalAudioProcessor() {
             // Step 1: Process (extract audio/compress)
             // processingState is already 'compressing'
             const processed = await processAudioForUpload(file!, (_stage, p) => {
-                if (!isCancelled()) setProcessingProgress(p);
+                if (!isCancelled()) {
+                    setProcessingProgress(p);
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'upload', subStep: 'compressing', progress: p });
+                }
             });
             if (isCancelled()) return;
 
@@ -111,24 +124,30 @@ export default function GlobalAudioProcessor() {
                 if (isCancelled()) return;
                 if (p < 0.5) {
                     setProcessingState('uploading');
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'upload', subStep: 'uploading', progress: p });
                 } else {
                     setProcessingState('transcribing');
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'transcribing', subStep: 'transcribing', progress: p });
                 }
                 setProcessingProgress(p);
             });
             if (isCancelled()) return;
 
             setTranscription(text);
+            if (currentProjectId) updateProjectState(currentProjectId, { transcription: text });
 
             // Step 3: Analyze / Organize
             setProcessingState('analyzing');
             setStep('ai-processing');
             setAiStep(0);
 
-            const organizeKey = geminiKey;
+            const organizeKey = key;
             // We use organizeNotesWithGemini directly
             const notes = await organizeNotesWithGemini(text, organizeKey, (s) => {
-                if (!isCancelled()) setAiStep(s);
+                if (!isCancelled()) {
+                    setAiStep(s);
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'ai-processing', progress: s / 5 });
+                }
             });
 
             if (isCancelled()) return;
@@ -144,6 +163,18 @@ export default function GlobalAudioProcessor() {
 
             setOrganizedNotes(cleanNotes);
             setProcessingState('done');
+
+            // Mark DB as done
+            if (currentProjectId) {
+                updateProjectState(currentProjectId, {
+                    step: 'editor',
+                    subStep: 'done',
+                    progress: 1,
+                    organizedNotes: cleanNotes
+                });
+                db.projects.update(currentProjectId, { status: 'done', title: cleanNotes.match(/^## Título\s*\n(.+)/m)?.[1]?.trim() || 'Untitled Note' });
+            }
+
             setStep('editor');
 
         } catch (err: any) {
@@ -157,7 +188,10 @@ export default function GlobalAudioProcessor() {
             // Step 1: Process (compress + maybe chunk)
             setProcessingState('compressing');
             const processed = await processAudioForUpload(file!, (_stage, p) => {
-                if (!isCancelled()) setProcessingProgress(p);
+                if (!isCancelled()) {
+                    setProcessingProgress(p);
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'upload', subStep: 'compressing', progress: p });
+                }
             });
             if (isCancelled()) return;
 
@@ -178,12 +212,14 @@ export default function GlobalAudioProcessor() {
             // Step 2: Transcribe
             setProcessingState('transcribing');
             setProcessingProgress(0.05); // Start with some progress
+            if (currentProjectId) updateProjectState(currentProjectId, { step: 'transcribing', subStep: 'initializing', progress: 0.05 });
             console.log('[GlobalAudioProcessor] Starting Groq transcription...');
 
             const text = await transcribeAudio(processed.chunks, key, (p) => {
                 if (!isCancelled()) {
                     console.log(`[GlobalAudioProcessor] Progress: ${Math.round(p * 100)}%`);
                     setProcessingProgress(p);
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'transcribing', progress: p });
                 }
             });
 
@@ -198,6 +234,7 @@ export default function GlobalAudioProcessor() {
             }
 
             setTranscription(text);
+            if (currentProjectId) updateProjectState(currentProjectId, { transcription: text });
 
             // Step 3: Analyze / Organize Notes
             setProcessingState('analyzing');
@@ -205,7 +242,7 @@ export default function GlobalAudioProcessor() {
 
             // We use the same callback pattern for progress
             const organize = provider === 'gemini' ? organizeNotesWithGemini : organizeNotes;
-            const organizeKey = provider === 'gemini' ? geminiKey : apiKey;
+            const organizeKey = key; // Use the decrypted key we already have
 
             if (!organizeKey) throw new Error('No API Key for organization');
 
@@ -213,7 +250,10 @@ export default function GlobalAudioProcessor() {
             setAiStep(0);
 
             const notes = await organize(text, organizeKey, (s) => {
-                if (!isCancelled()) setAiStep(s);
+                if (!isCancelled()) {
+                    setAiStep(s);
+                    if (currentProjectId) updateProjectState(currentProjectId, { step: 'ai-processing', progress: s / 5 });
+                }
             });
 
             if (isCancelled()) return;
@@ -229,6 +269,18 @@ export default function GlobalAudioProcessor() {
 
             setOrganizedNotes(cleanNotes);
             setProcessingState('done');
+
+            // Mark DB as done
+            if (currentProjectId) {
+                updateProjectState(currentProjectId, {
+                    step: 'editor',
+                    subStep: 'done',
+                    progress: 1,
+                    organizedNotes: cleanNotes
+                });
+                db.projects.update(currentProjectId, { status: 'done', title: cleanNotes.match(/^## Título\s*\n(.+)/m)?.[1]?.trim() || 'Untitled Note' });
+            }
+
             setStep('editor');
 
         } catch (err: any) {

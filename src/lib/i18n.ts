@@ -88,6 +88,15 @@ export const translations = {
     'pricing.gemini.f3': { es: 'Razonamiento multimodal', en: 'Multimodal reasoning' },
     'pricing.gemini.btn': { es: 'Obtener Key de Gemini', en: 'Get Gemini Key' },
 
+    // Notifications
+    'notif.done': { es: 'Resumen generado', en: 'Summary generated' },
+    'notif.compressing': { es: 'Preparando audio...', en: 'Preparing audio...' },
+    'notif.uploading': { es: 'Subiendo...', en: 'Uploading...' },
+    'notif.transcribing': { es: 'Transcribiendo...', en: 'Transcribing...' },
+    'notif.analyzing': { es: 'Generando notas...', en: 'Generating notes...' },
+    'notif.processing': { es: 'Procesando...', en: 'Processing...' },
+    'notif.click_view': { es: 'Click para ver resultados', en: 'Click to view results' },
+
     'pricing.cta.start': { es: 'Comenzar ahora', en: 'Start now' },
     'pricing.cta.key': { es: 'Obtener API Key', en: 'Get API Key' },
 
@@ -103,7 +112,7 @@ export const translations = {
     'footer.github': { es: 'GitHub', en: 'GitHub' },
     'footer.privacy': { es: 'Privacidad', en: 'Privacy' },
     'footer.terms': { es: 'Términos', en: 'Terms' },
-    'footer.copyright': { es: 'Smart Class Notes. Open Source.', en: 'Smart Class Notes. Open Source.' },
+    'footer.copyright': { es: 'CompendiumNotes. Open Source.', en: 'CompendiumNotes. Open Source.' },
 
     // Hero Preview
     'hero.preview.filename': { es: 'clase_calculo.mp3', en: 'calculus_class.mp3' },
@@ -162,6 +171,16 @@ export const translations = {
     'app.config.paste': { es: 'Pegar', en: 'Paste' },
     'app.config.save': { es: 'Guardar', en: 'Save' },
     'app.config.saved': { es: 'Guardada', en: 'Saved' },
+    'app.config.verifying': { es: 'Verificando...', en: 'Verifying...' },
+    'app.config.new_key': { es: 'Ingresar una nueva API key', en: 'Enter a new API key' },
+    'app.config.active_encrypted': { es: 'Activa y Encriptada', en: 'Active and Encrypted' },
+    'app.config.valid_format': { es: 'Formato válido', en: 'Valid format' },
+    'app.config.invalid_format_groq': { es: 'Debe empezar con gsk_', en: 'Must start with gsk_' },
+    'app.config.invalid_format_gemini': { es: 'Debe empezar con AI', en: 'Must start with AI' },
+    'app.config.format_label': { es: 'Formato:', en: 'Format:' },
+    'app.config.error.groq': { es: 'La API Key de Groq no es válida o no tiene créditos/acceso.', en: 'Groq API Key is invalid or has no credits/access.' },
+    'app.config.error.gemini': { es: 'La API Key de Gemini no es válida.', en: 'Gemini API Key is invalid.' },
+    'app.config.error.network': { es: 'Error al validar las llaves via red.', en: 'Error validating keys via network.' },
     'app.config.privacy': {
         es: 'Tu API key se guarda solo en tu navegador. Nunca la enviamos a ningún servidor.',
         en: 'Your API key is stored only in your browser. We never send it to any server.',
@@ -188,8 +207,8 @@ export const translations = {
     'privacy.date': { es: 'Última actualización: 13 de febrero de 2026', en: 'Last updated: February 13, 2026' },
     'privacy.intro.title': { es: '1. Introducción', en: '1. Introduction' },
     'privacy.intro.desc': {
-        es: 'Smart Class Notes ("nosotros", "nuestro") respeta su privacidad. Esta Política de Privacidad explica cómo recopilamos, usamos y protegemos su información cuando utiliza nuestra aplicación. Su privacidad es nuestra prioridad: operamos bajo un modelo <strong>Bring Your Own Key (BYOK)</strong>, lo que significa que sus datos más sensibles son procesados directamente por los proveedores de IA (Groq/Google) utilizando sus propias credenciales.',
-        en: 'Smart Class Notes ("we", "our") respects your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use our application. Your privacy is our priority: we operate under a <strong>Bring Your Own Key (BYOK)</strong> model, meaning your most sensitive data is processed directly by AI providers (Groq/Google) using your own credentials.'
+        es: 'CompendiumNotes ("nosotros", "nuestro") respeta su privacidad. Esta Política de Privacidad explica cómo recopilamos, usamos y protegemos su información cuando utiliza nuestra aplicación. Su privacidad es nuestra prioridad: operamos bajo un modelo <strong>Bring Your Own Key (BYOK)</strong>, lo que significa que sus datos más sensibles son procesados directamente por los proveedores de IA (Groq/Google) utilizando sus propias credenciales.',
+        en: 'CompendiumNotes ("we", "our") respects your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use our application. Your privacy is our priority: we operate under a <strong>Bring Your Own Key (BYOK)</strong> model, meaning your most sensitive data is processed directly by AI providers (Groq/Google) using your own credentials.'
     },
     'privacy.collection.title': { es: '2. Recopilación de Datos', en: '2. Data Collection' },
     'privacy.collection.desc': {
@@ -201,8 +220,8 @@ export const translations = {
     'privacy.collection.l3': { es: 'Transcripciones y Notas: Se generan y muestran en su navegador. Usted es responsable de guardarlas.', en: 'Transcripts and Notes: Generated and displayed in your browser. You are responsible for saving them.' },
     'privacy.third.title': { es: '3. Uso de Servicios de Terceros', en: '3. Third-Party Services' },
     'privacy.third.desc': {
-        es: 'Utilizamos servicios de terceros para el procesamiento de IA. Al usar Smart Class Notes, usted también está sujeto a las políticas de privacidad de:',
-        en: 'We use third-party services for AI processing. By using Smart Class Notes, you are also subject to the privacy policies of:'
+        es: 'Utilizamos servicios de terceros para el procesamiento de IA. Al usar CompendiumNotes, usted también está sujeto a las políticas de privacidad de:',
+        en: 'We use third-party services for AI processing. By using CompendiumNotes, you are also subject to the privacy policies of:'
     },
     'privacy.changes.title': { es: '4. Cambios en esta Política', en: '4. Changes to this Policy' },
     'privacy.changes.desc': {
@@ -221,13 +240,13 @@ export const translations = {
     'terms.date': { es: 'Última actualización: 13 de febrero de 2026', en: 'Last updated: February 13, 2026' },
     'terms.acceptance.title': { es: '1. Aceptación de los Términos', en: '1. Acceptance of Terms' },
     'terms.acceptance.desc': {
-        es: 'Al acceder y utilizar Smart Class Notes, usted acepta estar sujeto a estos Términos de Servicio. Si no está de acuerdo con alguna parte de estos términos, no debe utilizar nuestro servicio.',
-        en: 'By accessing and using Smart Class Notes, you agree to be bound by these Terms of Service. If you do not agree to any part of these terms, you must not use our service.'
+        es: 'Al acceder y utilizar CompendiumNotes, usted acepta estar sujeto a estos Términos de Servicio. Si no está de acuerdo con alguna parte de estos términos, no debe utilizar nuestro servicio.',
+        en: 'By accessing and using CompendiumNotes, you agree to be bound by these Terms of Service. If you do not agree to any part of these terms, you must not use our service.'
     },
     'terms.desc.title': { es: '2. Descripción del Servicio', en: '2. Service Description' },
     'terms.desc.desc': {
-        es: 'Smart Class Notes es una herramienta que permite a los usuarios transcribir y organizar notas de audio utilizando inteligencia artificial. El servicio se proporciona "tal cual" y "según disponibilidad".',
-        en: 'Smart Class Notes is a tool that allows users to transcribe and organize audio notes using artificial intelligence. The service is provided "as is" and "as available".'
+        es: 'CompendiumNotes es una herramienta que permite a los usuarios transcribir y organizar notas de audio utilizando inteligencia artificial. El servicio se proporciona "tal cual" y "según disponibilidad".',
+        en: 'CompendiumNotes is a tool that allows users to transcribe and organize audio notes using artificial intelligence. The service is provided "as is" and "as available".'
     },
     'terms.resp.title': { es: '3. Responsabilidades del Usuario', en: '3. User Responsibilities' },
     'terms.resp.l1': { es: 'Usted es responsable de mantener la confidencialidad de sus API Keys (Groq/Gemini).', en: 'You are responsible for maintaining the confidentiality of your API Keys (Groq/Gemini).' },
@@ -235,13 +254,13 @@ export const translations = {
     'terms.resp.l3': { es: 'Usted garantiza que tiene los derechos necesarios sobre el contenido de audio que sube para su procesamiento.', en: 'You warrant that you have the necessary rights to the audio content you upload for processing.' },
     'terms.costs.title': { es: '4. Costos y Tarifas', en: '4. Costs and Fees' },
     'terms.costs.desc': {
-        es: 'Smart Class Notes es una aplicación de código abierto y de uso gratuito. Sin embargo, el uso de los modelos de IA de terceros (Groq, Google Gemini) puede estar sujeto a los límites y tarifas de sus respectivos proveedores. Usted es responsable de cualquier costo asociado con el uso de sus propias API Keys.',
-        en: 'Smart Class Notes is an open-source, free-to-use application. However, the use of third-party AI models (Groq, Google Gemini) may be subject to limits and fees from their respective providers. You are responsible for any costs associated with the use of your own API Keys.'
+        es: 'CompendiumNotes es una aplicación de código abierto y de uso gratuito. Sin embargo, el uso de los modelos de IA de terceros (Groq, Google Gemini) puede estar sujeto a los límites y tarifas de sus respectivos proveedores. Usted es responsable de cualquier costo asociado con el uso de sus propias API Keys.',
+        en: 'CompendiumNotes is an open-source, free-to-use application. However, the use of third-party AI models (Groq, Google Gemini) may be subject to limits and fees from their respective providers. You are responsible for any costs associated with the use of your own API Keys.'
     },
     'terms.limit.title': { es: '5. Limitación de Responsabilidad', en: '5. Limitation of Liability' },
     'terms.limit.desc': {
-        es: 'En ningún caso Smart Class Notes, sus desarrolladores o colaboradores serán responsables de ningún daño directo, indirecto, incidental, especial, consecuente o punitivo que surja de su uso del servicio.',
-        en: 'In no event shall Smart Class Notes, its developers, or contributors be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the service.'
+        es: 'En ningún caso CompendiumNotes, sus desarrolladores o colaboradores serán responsables de ningún daño directo, indirecto, incidental, especial, consecuente o punitivo que surja de su uso del servicio.',
+        en: 'In no event shall CompendiumNotes, its developers, or contributors be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the service.'
     },
     'terms.mod.title': { es: '6. Modificaciones', en: '6. Modifications' },
     'terms.mod.desc': {

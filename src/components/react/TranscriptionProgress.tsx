@@ -154,6 +154,7 @@ export default function TranscriptionProgress() {
                     </div>
                 )}
             </div>
+
         </div>
     );
 }

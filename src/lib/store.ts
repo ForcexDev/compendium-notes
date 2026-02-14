@@ -18,12 +18,12 @@ interface AppState {
 
     // API Keys (one per provider)
     apiKey: string;       // Groq
-    setApiKey: (key: string) => void;
-    geminiKey: string;    // Gemini
-    setGeminiKey: (key: string) => void;
+    setApiKey: (key: string) => Promise<void>;
+    geminiKey: string;    // Gemini (Encrypted)
+    setGeminiKey: (key: string) => Promise<void>;
 
     // Active key helper
-    activeKey: () => string;
+    activeKey: () => Promise<string>;
 
     // App step
     step: AppStep;
@@ -71,9 +71,14 @@ interface AppState {
     compressionInfo: string;
     setCompressionInfo: (info: string) => void;
 
+    // Persistence (ID only)
+    currentProjectId: number | null;
+    setCurrentProjectId: (id: number | null) => void;
+
     // Actions
     startProcessing: (file: File) => void;
     cancelProcessing: () => void;
+    restoreSession: () => Promise<void>; // New Action
 
     // Theme
     theme: 'light' | 'dark';
@@ -104,6 +109,10 @@ function getInitialProvider(): Provider {
     return 'groq';
 }
 
+// Import DB dynamically to avoid SSR issues if store is used there (though unlikely in standard React usage)
+import { db, createProject, saveAudioSource, getActiveProject } from './db';
+import { encryptData, decryptData } from './crypto';
+
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({
@@ -131,20 +140,46 @@ export const useAppStore = create<AppState>()(
             },
 
             apiKey: typeof window !== 'undefined' ? localStorage.getItem('scn-api-key') || '' : '',
-            setApiKey: (apiKey) => {
-                if (typeof window !== 'undefined') localStorage.setItem('scn-api-key', apiKey);
-                set({ apiKey });
+            setApiKey: async (apiKey) => {
+                if (typeof window !== 'undefined') {
+                    if (!apiKey) {
+                        localStorage.removeItem('scn-api-key');
+                        set({ apiKey: '' });
+                        return;
+                    }
+                    // Encrypt before storing
+                    const encrypted = await encryptData(apiKey);
+                    localStorage.setItem('scn-api-key', encrypted);
+                    set({ apiKey: encrypted }); // Store encrypted in state too (UI should decode if needed, but usually we just need it for requests)
+                }
             },
 
             geminiKey: typeof window !== 'undefined' ? localStorage.getItem('scn-gemini-key') || '' : '',
-            setGeminiKey: (geminiKey) => {
-                if (typeof window !== 'undefined') localStorage.setItem('scn-gemini-key', geminiKey);
-                set({ geminiKey });
+            setGeminiKey: async (geminiKey) => {
+                if (typeof window !== 'undefined') {
+                    if (!geminiKey) {
+                        localStorage.removeItem('scn-gemini-key');
+                        set({ geminiKey: '' });
+                        return;
+                    }
+                    const encrypted = await encryptData(geminiKey);
+                    localStorage.setItem('scn-gemini-key', encrypted);
+                    set({ geminiKey: encrypted });
+                }
             },
 
-            activeKey: () => {
+            activeKey: async () => {
                 const state = get();
-                return state.provider === 'gemini' ? state.geminiKey : state.apiKey;
+                const encrypted = state.provider === 'gemini' ? state.geminiKey : state.apiKey;
+                if (!encrypted) return '';
+
+                // Decrypt on demand
+                try {
+                    return await decryptData(encrypted);
+                } catch (e) {
+                    console.error('Failed to decrypt key', e);
+                    return '';
+                }
             },
 
             step: 'upload',
@@ -185,8 +220,78 @@ export const useAppStore = create<AppState>()(
             compressionInfo: '',
             setCompressionInfo: (compressionInfo) => set({ compressionInfo }),
 
-            startProcessing: (file) => set({ file, processingState: 'compressing', processingProgress: 0, step: 'transcribing', compressionInfo: '' }),
-            cancelProcessing: () => set({ processingState: 'idle', processingProgress: 0, file: null, step: 'upload' }),
+            currentProjectId: null,
+            setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
+            startProcessing: async (file) => {
+                // Initialize DB Project
+                try {
+                    const id = await createProject(file.name);
+                    await saveAudioSource(id, file);
+                    // Explicitly mark as processing so restoreSession knows to resume it
+                    await db.projects.update(id, { status: 'processing' });
+
+                    set({
+                        currentProjectId: id,
+                        file,
+                        processingState: 'compressing',
+                        processingProgress: 0,
+                        step: 'transcribing',
+                        compressionInfo: ''
+                    });
+                } catch (e) {
+                    console.error('DB Error:', e);
+                    // Fallback to memory
+                    set({
+                        file,
+                        processingState: 'compressing',
+                        processingProgress: 0,
+                        step: 'transcribing',
+                        compressionInfo: ''
+                    });
+                }
+            },
+
+            cancelProcessing: () => set({
+                processingState: 'idle',
+                processingProgress: 0,
+                file: null,
+                step: 'upload',
+                currentProjectId: null,
+                transcription: '',
+                organizedNotes: ''
+            }),
+
+            restoreSession: async () => {
+                if (typeof window === 'undefined') return;
+                try {
+                    const active = await getActiveProject();
+                    if (active && active.project.status !== 'done') {
+                        // Found a pending session
+                        console.log('Restoring session:', active.project.title);
+
+                        // Rehydrate File
+                        if (active.audio) {
+                            const restoredFile = new File([active.audio.file], active.audio.name, { type: active.audio.type });
+                            set({ file: restoredFile });
+                        }
+
+                        set({ currentProjectId: active.project.id });
+
+                        // Note: The rest of the state (transcription, notes) is handled by zustand persist
+                        // But we might need to nudge the GlobalAudioProcessor to resume if state was mid-process
+                        if (active.project.status === 'processing') {
+                            console.log('Auto-resuming interrupted process...');
+                            set({
+                                processingState: 'compressing',
+                                step: 'transcribing' // Force UI to show progress, not upload
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to restore session:', e);
+                }
+            },
 
             reset: () => {
                 // Clear persisted storage for content
@@ -203,6 +308,7 @@ export const useAppStore = create<AppState>()(
                     processingState: 'idle',
                     processingProgress: 0,
                     compressionInfo: '',
+                    currentProjectId: null
                     // Keep keys, provider, locale, style, theme
                 });
             },
@@ -216,6 +322,7 @@ export const useAppStore = create<AppState>()(
                 editedNotes: state.editedNotes,
                 title: state.title,
                 pdfStyle: state.pdfStyle,
+                // Don't persist file or big blobs here
             }),
         }
     )

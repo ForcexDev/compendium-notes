@@ -54,11 +54,14 @@ export default function AppMain() {
         const isProcessing = ['compressing', 'uploading', 'transcribing'].includes(processingSt);
 
         // Guard: If processing, always show progress (unless we have data/editor)
-        if (isProcessing && currentStep === 'upload') {
-            const target = processingSt === 'done' ? 'ai-processing' : 'transcribing';
-            useAppStore.setState({ step: target });
-            history.replaceState({ step: target }, '', `#${target}`);
-            return;
+        if (isProcessing) {
+            // Force redirect if we are on upload step or have no meaningful step
+            if (currentStep === 'upload' || !currentStep) {
+                const target = processingSt === 'done' ? 'ai-processing' : 'transcribing';
+                useAppStore.setState({ step: target });
+                history.replaceState({ step: target }, '', `#${target}`);
+                return;
+            }
         }
 
         // Initial check on load
@@ -134,19 +137,12 @@ export default function AppMain() {
     }, [setLocale]);
 
     const toggleLocale = () => {
-        const next = locale === 'es' ? 'en' : 'es';
-        setLocale(next);
-
-        // Update the button text in the nav if it exists (for Astro components)
-        const navToggle = document.getElementById('lang-toggle-nav');
-        if (navToggle) navToggle.textContent = next === 'es' ? 'ES' : 'EN';
-
-        // Sync with Astro components (like the Footer)
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('scn-lang', next);
-            if ((window as any).applyLang) {
-                (window as any).applyLang(next);
-            }
+        if ((window as any).toggleLang) {
+            (window as any).toggleLang();
+        } else {
+            const next = locale === 'es' ? 'en' : 'es';
+            setLocale(next);
+            if ((window as any).applyLang) (window as any).applyLang(next);
         }
     };
 
@@ -161,48 +157,21 @@ export default function AppMain() {
         return () => window.removeEventListener('scn-theme-change' as any, handleThemeChange);
     }, []);
 
+    // Sync Provider badge with Global Navbar
+    useEffect(() => {
+        const label = document.getElementById('provider-label');
+        if (label) label.textContent = provider === 'gemini' ? 'Gemini' : 'Groq';
+    }, [provider]);
+
+    // Handle open config from Global Navbar
+    useEffect(() => {
+        const handleOpenConfig = () => setConfigOpen(true);
+        window.addEventListener('scn-open-config' as any, handleOpenConfig);
+        return () => window.removeEventListener('scn-open-config' as any, handleOpenConfig);
+    }, [setConfigOpen]);
+
     return (
-        <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            {/* Nav */}
-            <nav className="h-14 border-b flex items-center px-4 sm:px-6" style={{ borderColor: 'var(--border-subtle)', background: 'rgba(var(--bg-primary-rgb), 0.8)', backdropFilter: 'blur(16px)' }}>
-                <a href="/" className="flex items-center gap-2.5 no-underline mr-auto">
-                    <div className="w-7 h-7 rounded-md flex items-center justify-center text-white font-semibold text-xs" style={{ background: 'var(--accent)' }}>S</div>
-                    <span className="text-sm font-medium hidden sm:block" style={{ color: 'var(--text-primary)' }}>Smart Class Notes</span>
-                </a>
-
-                <div className="flex items-center gap-2">
-                    {isConnected && (
-                        <span className="text-xs px-2 py-1 rounded-md flex items-center gap-1.5" style={{ background: 'rgba(16,185,129,0.1)', color: '#34d399', border: '1px solid rgba(16,185,129,0.2)' }}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                            {providerLabel}
-                        </span>
-                    )}
-                    <button
-                        onClick={toggleTheme}
-                        className="p-1.5 rounded-md transition-colors"
-                        style={{ color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
-                        title="Toggle Theme"
-                    >
-                        {theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
-                    </button>
-                    <button
-                        onClick={toggleLocale}
-                        className="text-xs px-2.5 py-1.5 rounded-md transition-colors"
-                        style={{ color: 'var(--text-muted)', border: '1px solid var(--border-subtle)' }}
-                    >
-                        {locale === 'es' ? 'ES' : 'EN'}
-                    </button>
-                    <button
-                        onClick={() => setConfigOpen(true)}
-                        className="p-2 rounded-md transition-colors"
-                        style={{ color: 'var(--text-muted)' }}
-                        title={`${t('nav.config', locale)} (Ctrl+K)`}
-                    >
-                        <Settings size={16} />
-                    </button>
-                </div>
-            </nav>
-
+        <div className="min-h-screen flex flex-col pt-14" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
             {/* Main content */}
             <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
                 <div className="w-full flex flex-col items-center">

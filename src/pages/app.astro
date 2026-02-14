@@ -1,10 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import Navbar from '../components/astro/Navbar.astro';
 import AppMain from '../components/react/AppMain';
 import Footer from '../components/astro/Footer.astro';
 ---
 
-<Layout title="Smart Class Notes">
+<Layout title="CompendiumNotes">
+  <Navbar />
   <AppMain client:only="react" />
   <Footer />
 </Layout>

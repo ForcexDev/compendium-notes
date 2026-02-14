@@ -1,4 +1,4 @@
-# Smart Class Notes - AI Study Companion
+# Compendium Notes
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Powered by Astro](https://img.shields.io/badge/Astro-4.0-orange?logo=astro&logoColor=white)](https://astro.build/)
@@ -71,7 +71,7 @@ graph TD
     subgraph "Client Side (Your Device)"
         Upload["Audio File"]
         Store["LocalStorage (Keys)"]
-        App["Smart Class Notes App"]
+        App["Compendium Notes App"]
     end
     
     subgraph "External AI APIs"

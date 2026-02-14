@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import { translations } from '../lib/i18n';
 import GlobalAudioProcessor from '../components/react/GlobalAudioProcessor';
+import ProcessNotification from '../components/react/ProcessNotification';
 import { ClientRouter } from 'astro:transitions';
 
 export interface Props {
@@ -22,6 +23,7 @@ const {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; connect-src 'self' https://api.groq.com https://generativelanguage.googleapis.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;" />
     <meta name="description" content={description} />
     <meta name="theme-color" content="#09090b" />
     <meta name="generator" content={Astro.generator} />
@@ -32,6 +34,7 @@ const {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&display=swap" rel="stylesheet">
     <ClientRouter />
 
     <script is:inline define:vars={{ translations }}>
@@ -71,7 +74,13 @@ const {
 
       // Initialize Immediately
       applyTheme(getTheme());
-      applyLang(getLang());
+      
+      // We must wait for DOM to apply language to components with data-i18n
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => applyLang(getLang()));
+      } else {
+        applyLang(getLang());
+      }
 
       // Re-apply after Astro View Transition navigation
       document.addEventListener('astro:after-swap', () => {
@@ -88,9 +97,14 @@ const {
 
       window.toggleLang = () => {
         const next = getLang() === 'es' ? 'en' : 'es';
-        localStorage.setItem('scn-lang', next);
+        setLocale(next);
         applyLang(next);
         window.dispatchEvent(new CustomEvent('scn-lang-change', { detail: next }));
+      };
+
+      // Helper for external scripts
+      window.setLocale = (lang) => {
+        localStorage.setItem('scn-lang', lang);
       };
 
       // Listener for buttons
@@ -99,6 +113,7 @@ const {
         if (btn) {
           if (btn.id === 'theme-toggle') window.toggleTheme();
           if (btn.id === 'lang-toggle-nav') window.toggleLang();
+          if (btn.id === 'config-toggle') window.dispatchEvent(new CustomEvent('scn-open-config'));
         }
       });
     </script>
@@ -106,6 +121,7 @@ const {
   <body class="custom-scrollbar">
     <div transition:persist="global-processor">
         <GlobalAudioProcessor client:only="react" />
+        <ProcessNotification client:only="react" />
     </div>
     <slot />
   </body>

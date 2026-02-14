@@ -159,9 +159,9 @@ export function generatePdf(options: PdfOptions, action: 'save' | 'blob' = 'save
 
     doc.setProperties({
         title: title,
-        subject: 'Smart Class Notes',
-        author: 'Smart Class Notes',
-        creator: 'Smart Class Notes'
+        subject: 'CompendiumNotes',
+        author: 'CompendiumNotes',
+        creator: 'CompendiumNotes'
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -205,7 +205,7 @@ export function generatePdf(options: PdfOptions, action: 'save' | 'blob' = 'save
 
     let metaText = `${date}`;
     if (duration) metaText += `  •  ${duration}`;
-    metaText += `  •  Smart Class Notes`;
+    metaText += `  •  Compendium Notes`;
 
     doc.text(metaText, margin, y);
     y += 5;

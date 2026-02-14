@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Eye, EyeOff, Clipboard, ExternalLink, Check } from 'lucide-react';
+import { X, Eye, EyeOff, Clipboard, ExternalLink, Check, BadgeCheck, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
 import { t } from '../../lib/i18n';
+import { validateGroqKey } from '../../lib/groq';
+import { validateGeminiKey } from '../../lib/gemini';
 
 export default function ConfigModal() {
     const {
@@ -11,22 +13,53 @@ export default function ConfigModal() {
         pdfStyle, setPdfStyle, locale
     } = useAppStore();
 
-    const [groqInput, setGroqInput] = useState(apiKey);
-    const [geminiInput, setGeminiInput] = useState(geminiKey);
+    const [groqInput, setGroqInput] = useState('');
+    const [geminiInput, setGeminiInput] = useState('');
     const [showGroq, setShowGroq] = useState(false);
     const [showGemini, setShowGemini] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [validating, setValidating] = useState(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         inputRef.current?.focus();
     }, []);
 
-    const handleSave = () => {
-        setApiKey(groqInput.trim());
-        setGeminiKey(geminiInput.trim());
-        setSaved(true);
-        setTimeout(() => setSaved(false), 1500);
+    const handleSave = async () => {
+        setErrorMsg(null);
+        setValidating(true);
+
+        try {
+            if (groqInput) {
+                const isValid = await validateGroqKey(groqInput.trim());
+                if (!isValid) {
+                    setErrorMsg(t('app.config.error.groq', locale));
+                    setValidating(false);
+                    return;
+                }
+                await setApiKey(groqInput.trim());
+                setGroqInput('');
+            }
+
+            if (geminiInput) {
+                const isValid = await validateGeminiKey(geminiInput.trim());
+                if (!isValid) {
+                    setErrorMsg(t('app.config.error.gemini', locale));
+                    setValidating(false);
+                    return;
+                }
+                await setGeminiKey(geminiInput.trim());
+                setGeminiInput('');
+            }
+
+            setSaved(true);
+            setTimeout(() => setSaved(false), 1500);
+        } catch (e) {
+            setErrorMsg(t('app.config.error.network', locale));
+        } finally {
+            setValidating(false);
+        }
     };
 
     const handlePaste = async (target: 'groq' | 'gemini') => {
@@ -102,11 +135,24 @@ export default function ConfigModal() {
                     {/* Groq API Key */}
                     {provider === 'groq' && (
                         <div>
-                            <label className="text-xs font-medium mb-2 block flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
-                                <span>Groq API Key</span>
+                            <label className="text-xs font-medium mb-2 flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
+                                <span className="flex items-center gap-1.5">
+                                    Groq API Key
+                                    {apiKey && !groqInput && (
+                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold">
+                                            <BadgeCheck size={10} />
+                                            {t('app.config.active_encrypted', locale)}
+                                        </span>
+                                    )}
+                                </span>
                                 {groqInput.length > 5 && (
                                     <span className={`text-[10px] ${groqInput.startsWith('gsk_') ? 'text-green-500' : 'text-red-500'}`}>
-                                        {groqInput.startsWith('gsk_') ? 'Formato válido' : 'Debe empezar con gsk_'}
+                                        {groqInput.startsWith('gsk_') ? t('app.config.valid_format', locale) : t('app.config.invalid_format_groq', locale)}
+                                    </span>
+                                )}
+                                {groqInput.length <= 5 && (
+                                    <span className="text-[10px] text-[var(--text-muted)] opacity-70">
+                                        {t('app.config.format_label', locale)} gsk_...
                                     </span>
                                 )}
                             </label>
@@ -117,7 +163,7 @@ export default function ConfigModal() {
                                         type={showGroq ? 'text' : 'password'}
                                         value={groqInput}
                                         onChange={(e) => setGroqInput(e.target.value)}
-                                        placeholder="gsk_..."
+                                        placeholder={apiKey ? t('app.config.new_key', locale) : 'gsk_...'}
                                         className="flex-1 bg-transparent border-none outline-none text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
@@ -139,11 +185,24 @@ export default function ConfigModal() {
                     {/* Gemini API Key */}
                     {provider === 'gemini' && (
                         <div>
-                            <label className="text-xs font-medium mb-2 block flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
-                                <span>Gemini API Key</span>
+                            <label className="text-xs font-medium mb-2 flex items-center justify-between" style={{ color: 'var(--text-secondary)' }}>
+                                <span className="flex items-center gap-1.5">
+                                    Gemini API Key
+                                    {geminiKey && !geminiInput && (
+                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold">
+                                            <BadgeCheck size={10} />
+                                            {t('app.config.active_encrypted', locale)}
+                                        </span>
+                                    )}
+                                </span>
                                 {geminiInput.length > 5 && (
                                     <span className={`text-[10px] ${geminiInput.startsWith('AI') ? 'text-green-500' : 'text-red-500'}`}>
-                                        {geminiInput.startsWith('AI') ? 'Formato válido' : 'Debe empezar con AI'}
+                                        {geminiInput.startsWith('AI') ? t('app.config.valid_format', locale) : t('app.config.invalid_format_gemini', locale)}
+                                    </span>
+                                )}
+                                {geminiInput.length <= 5 && (
+                                    <span className="text-[10px] text-[var(--text-muted)] opacity-70">
+                                        {t('app.config.format_label', locale)} AIza...
                                     </span>
                                 )}
                             </label>
@@ -153,7 +212,7 @@ export default function ConfigModal() {
                                         type={showGemini ? 'text' : 'password'}
                                         value={geminiInput}
                                         onChange={(e) => setGeminiInput(e.target.value)}
-                                        placeholder="AIza..."
+                                        placeholder={geminiKey ? t('app.config.new_key', locale) : 'AIza...'}
                                         className="flex-1 bg-transparent border-none outline-none text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
@@ -200,13 +259,27 @@ export default function ConfigModal() {
                         </div>
                     </div>
 
+                    {/* Error Message */}
+                    {errorMsg && (
+                        <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded border border-red-500/20">
+                            {errorMsg}
+                        </div>
+                    )}
+
                     {/* Save button */}
                     <button
                         onClick={handleSave}
-                        className="w-full py-2.5 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+                        disabled={validating}
+                        className="w-full py-2.5 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                         style={{ background: saved ? '#10b981' : 'var(--accent)' }}
                     >
-                        {saved ? <><Check size={14} /> {t('app.config.saved', locale)}</> : t('app.config.save', locale)}
+                        {validating ? (
+                            <><Loader2 size={14} className="animate-spin" /> {t('app.config.verifying', locale)}</>
+                        ) : saved ? (
+                            <><Check size={14} /> {t('app.config.saved', locale)}</>
+                        ) : (
+                            t('app.config.save', locale)
+                        )}
                     </button>
                 </div>
             </motion.div>

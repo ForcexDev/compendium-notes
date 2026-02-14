@@ -257,3 +257,17 @@ INSTRUCCIONES:
     const data = await response.json();
     return data.choices?.[0]?.message?.content || null;
 }
+// ... existing code ...
+
+export async function validateGroqKey(apiKey: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${GROQ_API_URL}/models`, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+        });
+        return response.ok;
+    } catch (e) {
+        console.error('Groq validation error:', e);
+        return false;
+    }
+}

@@ -230,3 +230,14 @@ Organiza esta transcripción en apuntes estructurados.`;
     onStep?.(5);
     return content;
 }
+// ... existing code ...
+
+export async function validateGeminiKey(apiKey: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${GEMINI_API_URL}/models?key=${apiKey}&pageSize=1`);
+        return response.ok;
+    } catch (e) {
+        console.error('Gemini validation error:', e);
+        return false;
+    }
+}

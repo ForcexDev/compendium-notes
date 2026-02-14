@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, Clock, Volume2, ArrowRight, Sparkles, Zap, BrainCircuit, Info } from 'lucide-react';
+import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, Clock, Volume2, ArrowRight, Sparkles, Zap, BrainCircuit, Info, RefreshCw } from 'lucide-react';
 import { t } from '../../lib/i18n';
 
 import AudioRecorder from './AudioRecorder';
@@ -17,7 +17,19 @@ export default function UploadZone() {
     const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState } = useAppStore();
     const [isDragging, setIsDragging] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
+    const [showHint, setShowHint] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Show hint if processing is active but stuck in this view
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (file && processingState !== 'idle') {
+            timer = setTimeout(() => setShowHint(true), 3000);
+        } else {
+            setShowHint(false);
+        }
+        return () => clearTimeout(timer);
+    }, [file, processingState]);
 
     const validate = useCallback((f: File): boolean => {
         const isSupportedType = f.type && ACCEPTED.includes(f.type);
@@ -103,7 +115,13 @@ export default function UploadZone() {
                     type="file"
                     accept="audio/*,video/*,.mp3,.m4a,.wav,.ogg,.flac,.webm,.mp4,.mov"
                     className="hidden"
-                    onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                    onChange={(e) => {
+                        if (e.target.files?.[0]) {
+                            handleFile(e.target.files[0]);
+                            // Reset value to allow re-selecting same file if needed later
+                            e.target.value = '';
+                        }
+                    }}
                 />
 
                 {!file ? (
@@ -146,7 +164,11 @@ export default function UploadZone() {
                         </div>
                         {processingState === 'idle' && (
                             <button
-                                onClick={() => setFile(null)}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFile(null);
+                                    if (inputRef.current) inputRef.current.value = '';
+                                }}
                                 className="text-xs px-2 py-1 rounded transition-colors"
                                 style={{ color: 'var(--text-muted)' }}
                                 title={t('app.upload.remove', locale) || 'Remove file'}
@@ -156,6 +178,18 @@ export default function UploadZone() {
                         )}
                     </div>
                 )}
+                {/* Hint for blocked state */}
+                {showHint && processingState !== 'idle' && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4">
+                        <p className="text-[10px] text-center opacity-60 flex items-center justify-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                            <RefreshCw size={10} />
+                            {locale === 'es'
+                                ? '¿Se quedó pegado? Presiona Ctrl+F5 para recargar.'
+                                : 'Stuck? Press Ctrl+F5 to reload.'}
+                        </p>
+                    </motion.div>
+                )}
+
             </div>
 
             {/* Start button */}

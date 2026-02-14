@@ -293,7 +293,7 @@ export default function NotesEditor() {
                 <div style="background:${styles.headerBg};padding:${styles.headerPadding};margin:-2rem -2rem 2rem -2rem;border-bottom:1px solid ${styles.columnDivider};">
                     <h1 style="font-family:${styles.font};font-size:${styles.titleSize};font-weight:${styles.titleWeight};color:${styles.titleColor};line-height:${styles.titleLineHeight};margin:${styles.titleMargin};text-align:left;">${derivedTitle}</h1>
                     <div style="font-size:${styles.metaSize};color:${styles.metaColor};margin-top:0.5rem;">
-                        ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Smart Class Notes
+                        ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Compendium Notes
                     </div>
                 </div>
             `;
@@ -303,7 +303,7 @@ export default function NotesEditor() {
             headerHtml = `
                 <h1 style="font-family:${styles.font};font-size:${styles.titleSize};font-weight:${styles.titleWeight};color:${styles.titleColor};line-height:${styles.titleLineHeight};margin:${styles.titleMargin};">${derivedTitle}</h1>
                 <div style="font-size:${styles.metaSize};color:${styles.metaColor};margin:0.5rem 0;">
-                    ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Smart Class Notes
+                    ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Compendium Notes
                 </div>
                 <div style="border-bottom:${styles.separatorWidth} solid ${styles.separatorColor};margin:${styles.separatorMargin};"></div>
             `;
@@ -313,7 +313,7 @@ export default function NotesEditor() {
             headerHtml = `
                 <h1 style="font-family:${styles.font};font-size:${styles.titleSize};font-weight:${styles.titleWeight};color:${styles.titleColor};line-height:${styles.titleLineHeight};margin:${styles.titleMargin};">${derivedTitle}</h1>
                 <div style="font-size:${styles.metaSize};color:${styles.metaColor};margin:0.5rem 0;">
-                    ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Smart Class Notes
+                    ${new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US')} • Compendium Notes
                 </div>
                 <div style="border-bottom:${styles.separatorWidth} solid ${styles.separatorColor};margin:${styles.separatorMargin};"></div>
             `;
