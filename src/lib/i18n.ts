@@ -24,8 +24,8 @@ export const translations = {
     },
     'features.transcribe.title': { es: 'Transcripción Dual', en: 'Dual Transcription' },
     'features.transcribe.desc': {
-        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento multimodal de Gemini Flash 2.0.',
-        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini Flash 2.0 multimodal reasoning.',
+        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento multimodal de Gemini Flash 2.0 + Pro 2.5.',
+        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini Flash 2.0 + Pro 2.5 multimodal reasoning.',
     },
     'features.organize.title': { es: 'Organización Inteligente', en: 'Intelligent Organization' },
     'features.organize.desc': {
@@ -76,15 +76,15 @@ export const translations = {
     'pricing.groq.price': { es: '$0', en: '$0' },
     'pricing.groq.f1': { es: 'Modelo Whisper V3 Turbo + Llama', en: 'Whisper V3 Turbo + Llama Model' },
     'pricing.groq.f2': { es: 'Transcripción ultra-rápida', en: 'Ultra-fast transcription' },
-    'pricing.groq.f3': { es: 'Mejor para audios < 1 hora', en: 'Best for audios < 1 hour' },
+    'pricing.groq.f3': { es: 'Mejor para audios < 45 minutos', en: 'Best for audios < 45 minutes' },
     'pricing.groq.btn': { es: 'Obtener Key de Groq', en: 'Get Groq Key' },
 
     // Gemini Card
     'pricing.gemini.title': { es: 'Potencia', en: 'Power' },
     'pricing.gemini.desc': { es: 'Para contenido complejo', en: 'For complex content' },
     'pricing.gemini.price': { es: '$0', en: '$0' },
-    'pricing.gemini.f1': { es: 'Modelo Gemini Flash 2.0', en: 'Gemini Flash 2.0 Model' },
-    'pricing.gemini.f2': { es: 'Contexto masivo (+1h)', en: 'Massive context (+1h)' },
+    'pricing.gemini.f1': { es: 'Modelo Gemini Flash 2.0 + Pro 2.5', en: 'Gemini Flash 2.0 + Pro 2.5 Model' },
+    'pricing.gemini.f2': { es: 'Contexto masivo (+45min)', en: 'Massive context (+45min)' },
     'pricing.gemini.f3': { es: 'Razonamiento multimodal', en: 'Multimodal reasoning' },
     'pricing.gemini.btn': { es: 'Obtener Key de Gemini', en: 'Get Gemini Key' },
 
@@ -136,7 +136,7 @@ export const translations = {
     },
     'app.upload.drop': { es: 'Arrastra tu archivo o haz click', en: 'Drag your file or click' },
     'app.upload.dropping': { es: 'Suelta tu archivo aquí', en: 'Drop your file here' },
-    'app.upload.formats': { es: 'MP3, MP4, WAV, M4A, MOV — Máx. 200MB', en: 'MP3, MP4, WAV, M4A, MOV — Max. 200MB' },
+    'app.upload.formats': { es: 'MP3, MP4, WAV, M4A, MOV — Máx. 250MB', en: 'MP3, MP4, WAV, M4A, MOV — Max. 250MB' },
     'app.upload.select': { es: 'Seleccionar archivo', en: 'Select file' },
     'app.upload.transcribe': { es: 'Transcribir con IA', en: 'Transcribe with AI' },
     'app.upload.remove': { es: 'Eliminar archivo', en: 'Remove file' },
@@ -179,6 +179,7 @@ export const translations = {
     'app.config.processing': { es: 'Procesando archivo...', en: 'Processing file...' },
     'app.config.new_key': { es: 'Ingresar una nueva API key', en: 'Enter a new API key' },
     'app.config.active_encrypted': { es: 'Activa y Encriptada', en: 'Active and Encrypted' },
+    'app.config.clear': { es: 'Eliminar', en: 'Delete' },
     'app.config.valid_format': { es: 'Formato válido', en: 'Valid format' },
     'app.config.invalid_format_groq': { es: 'Debe empezar con gsk_', en: 'Must start with gsk_' },
     'app.config.invalid_format_gemini': { es: 'Debe empezar con AI', en: 'Must start with AI' },
@@ -206,6 +207,17 @@ export const translations = {
         es: 'Configura tu API Key (Groq o Gemini) primero.',
         en: 'Configure your API Key (Groq or Gemini) first.',
     },
+    'app.processing.patience': {
+        es: 'Se paciente, la duración depende de la potencia de tu dispositivo y el tamaño del archivo.',
+        en: 'Please be patient, duration depends on your device power and file size.',
+    },
+    'app.processing.patience.gemini': {
+        es: 'Gemini Pro está trabajando para ti. En archivos de larga duración, la transcripción puede demorar hasta 5 minutos.',
+        en: 'Gemini Pro is working for you. For long files, transcription can take up to 5 minutes.',
+    },
+    'app.processing.cancel': { es: 'Cancelar transcripción', en: 'Cancel transcription' },
+    'app.processing.stuck_btn': { es: 'Limpiar proceso atascado', en: 'Clear stuck process' },
+    'app.processing.reset_desc': { es: '¿Se quedó pegado?', en: 'Stuck?' },
 
     // Privacy
     'privacy.title': { es: 'Política de Privacidad', en: 'Privacy Policy' },
@@ -272,6 +284,10 @@ export const translations = {
         es: 'Nos reservamos el derecho de modificar o reemplazar estos Términos en cualquier momento. Es su responsabilidad revisar estos Términos periódicamente para ver si hay cambios.',
         en: 'We reserve the right to modify or replace these Terms at any time. It is your responsibility to review these Terms periodically for changes.'
     },
+
+    // PDF
+    'pdf.page': { es: 'Página', en: 'Page' },
+    'pdf.of': { es: 'de', en: 'of' },
 
     // Language toggle
     'lang.switch': { es: 'EN', en: 'ES' },

@@ -89,7 +89,7 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
     };
 
     const getSupportedMimeType = () => {
-        const types = ['audio/mp4', 'audio/webm', 'audio/ogg', 'audio/wav'];
+        const types = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
         for (const type of types) {
             if (MediaRecorder.isTypeSupported(type)) return type;
         }
@@ -102,7 +102,11 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
         // Wait a tiny bit for last chunk
         setTimeout(() => {
             const mimeType = getSupportedMimeType();
-            const extension = mimeType.includes('mp4') ? 'm4a' : mimeType.split('/')[1];
+            let extension = 'webm';
+            if (mimeType.includes('mp4')) extension = 'm4a';
+            else if (mimeType.includes('ogg')) extension = 'ogg';
+            else if (mimeType.includes('wav')) extension = 'wav';
+
             const blob = new Blob(chunksRef.current, { type: mimeType });
             const file = new File([blob], `recording_${new Date().toISOString()}.${extension}`, { type: mimeType });
             onRecordingComplete(file);

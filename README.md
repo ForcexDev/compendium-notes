@@ -54,7 +54,7 @@ Real-world processing performance for a 1-hour lecture (~50MB audio):
 | Provider | Model | Speed | Cost (Free Tier) | Best For |
 |----------|-------|-------|------------------|----------|
 | **Groq** | Whisper v3 + Llama 4 Scout | ~15-30 seconds | Free | Extreme Speed |
-| **Gemini** | Flash 2.0 | ~30-45 seconds | Free | Long Context (+1h) |
+| **Gemini** | Flash 2.0 + Pro 2.5| ~30-45 seconds | Free | Long Context (+1h) |
 
 **Key Insights:**
 - **Groq** (via Whisper) is unparalleled in speed for files under 100MB.
@@ -76,7 +76,7 @@ graph TD
     
     subgraph "External AI APIs"
         Groq["Groq API (Whisper/Llama)"]
-        Gemini["Google API (Gemini Flash)"]
+        Gemini["Google API (Gemini Flash + Pro)"]
     end
 
     User --> Upload
@@ -153,7 +153,7 @@ Enter them in the application settings (gear icon).
 ### "Rate Limit Exceeded" / "Resource Exhausted"
 - **Groq**: Free tier has strict per-minute limits. If you hit them, wait a minute or switch provider.
 - **Gemini**: If you see "Limit 0" or 429 immediately, you likely need to link a **Billing Account** (credit card) in [Google AI Studio](https://aistudio.google.com/app/plan).
-  - **Important**: The "Pay-as-you-go" plan often includes a massive **Free Tier** (or effectively **Unlimited** for Gemini Flash, as confirmed in testing) but requires identity verification.
+  - **Important**: The "Pay-as-you-go" plan often includes a massive **Free Tier** (or effectively **Unlimited** for Gemini Flash 2.0, as confirmed in testing) but requires identity verification.
   - Without billing, you are on a restricted "Free of Charge" tier which may be lower.
 
 ---

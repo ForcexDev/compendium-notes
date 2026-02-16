@@ -5,7 +5,7 @@ export interface Project {
     title: string;
     createdAt: number;
     updatedAt: number;
-    status: 'draft' | 'processing' | 'done';
+    status: 'draft' | 'processing' | 'done' | 'cancelled';
 }
 
 export interface AudioSource {
@@ -25,6 +25,7 @@ export interface ProcessingState {
     transcription?: string;
     organizedNotes?: string;
     lastUpdated: number;
+    metadata?: Record<string, any>;
 }
 
 export class CompendiumDB extends Dexie {

@@ -7,7 +7,17 @@ async function transcribeSingleFile(
     file: File,
     apiKey: string,
 ): Promise<string> {
-    console.log(`[Groq] Iniciando transcripción de ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+    const fileSizeMB = file.size / (1024 * 1024);
+    console.log(`[Groq] Iniciando transcripción de ${file.name} (${fileSizeMB.toFixed(2)}MB)`);
+
+    // Timeout dinámico: 2min base + 30s por cada 5MB adicionales
+    const baseSizeMB = 5;
+    const baseTimeout = 120000; // 2 min
+    const extraTimePerChunk = 30000; // 30s por cada 5MB
+    const timeout = baseTimeout + Math.max(0, Math.ceil((fileSizeMB - baseSizeMB) / baseSizeMB)) * extraTimePerChunk;
+
+    console.log(`[Groq] Timeout: ${(timeout / 1000).toFixed(0)}s for ${fileSizeMB.toFixed(1)}MB file`);
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('model', 'whisper-large-v3-turbo');
@@ -17,7 +27,7 @@ async function transcribeSingleFile(
 
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutes timeout per file
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
         const response = await fetch(`${GROQ_API_URL}/audio/transcriptions`, {
             method: 'POST',
@@ -95,8 +105,8 @@ export async function transcribeAudio(
     return results.join('\n\n');
 }
 
-// ~4 chars per token on average. Groq free tier = 12k TPM for Llama 3.3 70B.
-// System prompt ~800 tokens, so keep user content under ~8k tokens (~32k chars).
+// ~4 chars per token on average. Groq free tier = 30k TPM for Llama 4 scout and 500k TPD
+// whisper large v3 turbo 20 RPM 28.8k Audio seconds per day 7.2K Audio seconds per hour
 const MAX_CHARS_PER_CHUNK = 28000;
 const DELAY_BETWEEN_CHUNKS_MS = 6000; // avoid rate limits
 
@@ -174,7 +184,7 @@ async function callLlama(
     partLabel?: string,
 ): Promise<string | null> {
     const systemPrompt = mode === 'full' || mode === 'first'
-        ? `Eres un asistente experto en crear apuntes académicos estructurados. Tu tarea es organizar una transcripción de audio en apuntes profesionales y claros.
+        ? `Eres un asistente experto en crear apuntes académicos estructurados. Tu tarea es organizar una transcripción de audio en apuntes profesionales y claros en el idioma original de la transcripción.
 
 FORMATO DE SALIDA (Markdown):
 
@@ -203,6 +213,7 @@ FORMATO DE SALIDA (Markdown):
 [Transcripción de esta sección organizada y limpia]
 
 INSTRUCCIONES IMPORTANTES:
+- Responde en el mismo idioma que la transcripción.
 - Mantén el lenguaje académico pero claro
 - Resalta términos técnicos con **bold**
 - Los timestamps deben estar en formato [MM:SS]
@@ -221,7 +232,8 @@ INSTRUCCIONES:
 - Resalta términos técnicos con **bold**
 - Usa timestamps [MM:SS]
 - Corrige errores gramaticales
-- Elimina muletillas`;
+- Elimina muletillas
+- Mantén el idioma original de la transcripción`;
 
     const userContent = partLabel
         ? `${partLabel} — AUDIO TRANSCRITO:\n\n${transcriptionChunk}\n\nOrganiza esta parte de la transcripción.`

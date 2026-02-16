@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, Check, Download, Loader2, RotateCcw, PenLine, Eye, FileText, ExternalLink } from 'lucide-react';
+import { Copy, Check, Download, Loader2, RotateCcw, PenLine, Eye, FileText, ExternalLink, Palette, MessageSquareText } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import { generatePdf } from '../../lib/pdf-generator';
@@ -11,26 +11,28 @@ export default function NotesEditor() {
     const [downloading, setDownloading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
     const [isStyleOpen, setIsStyleOpen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('edit');
+    const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('preview');
     const [showTranscript, setShowTranscript] = useState(false);
 
     // Derived title logic
     const derivedTitle = useMemo(() => {
-        if (title) return title;
-
+        // 1. Buscamos el título explícito en el contenido (Formatos # Título ...)
         const explicitMatch = editedNotes.match(/^## T[íi]tulo\s*\n+([^\n]+)/m);
         if (explicitMatch) return explicitMatch[1].trim().replace(/\*\*/g, '');
 
+        // 2. Buscamos el primer H1 (#) o H2 (##)
         const firstLineMatch = editedNotes.match(/^\s*#{1,2}\s+([^\n]+)/);
         if (firstLineMatch) {
             const candidate = firstLineMatch[1].trim();
+            // Evitamos títulos genéricos de estructura
             const reserved = ['Resumen', 'Conceptos', 'Definiciones', 'Contenido', 'Introducción'];
             if (!reserved.some(r => candidate.includes(r))) {
                 return candidate.replace(/\*\*/g, '');
             }
         }
 
-        return file?.name?.replace(/\.[^.]+$/, '') || 'Notes';
+        // 3. Fallback al título guardado o nombre de archivo
+        return title || file?.name?.replace(/\.[^.]+$/, '') || 'Untitled Note';
     }, [title, editedNotes, file]);
 
     const handleCopy = async () => {
@@ -65,6 +67,7 @@ export default function NotesEditor() {
                 duration: '',
                 content: finalContent,
                 style: pdfStyle,
+                locale: locale,
             });
             setDownloading(false);
             setDownloaded(true);
@@ -256,6 +259,8 @@ export default function NotesEditor() {
                 } else {
                     const borderStyle = pdfStyle === 'academico' ? `border-bottom:${styles.h2Border};padding-bottom:${styles.h2Padding};` : '';
                     processedHtml += `<h2 style="font-family:${styles.font};font-size:${styles.h2Size};font-weight:${styles.h2Weight};margin:${styles.h2Margin};color:${styles.titleColor};${borderStyle}">${text}</h2>`;
+                    // Salto de línea explícito (Spacer) para asegurar separación visual
+                    processedHtml += `<div style="height:1.25rem;width:100%;display:block;"></div>`;
                 }
             } else if (line.startsWith('# ')) {
                 flushList();
@@ -364,44 +369,11 @@ export default function NotesEditor() {
                 </div>
 
                 {/* Right Group: Actions */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <button
-                        onClick={() => setShowTranscript(!showTranscript)}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
-                        style={{
-                            background: showTranscript ? 'var(--accent-subtle)' : 'transparent',
-                            color: showTranscript ? 'var(--accent)' : 'var(--text-muted)',
-                            border: `1px solid ${showTranscript ? 'var(--accent)' : 'var(--border-subtle)'}`
-                        }}
-                        title={locale === 'es' ? 'Ver transcripción original' : 'View original transcript'}
-                    >
-                        <FileText size={14} />
-                        <span className="hidden md:inline">{locale === 'es' ? 'Transcripción' : 'Transcript'}</span>
-                    </button>
-
-                    <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
-
-                    {/* Botón NEW rediseñado - más destacado pero sutil */}
-                    <button
-                        onClick={reset}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md transition-all duration-300 whitespace-nowrap group relative overflow-hidden"
-                        style={{
-                            color: 'var(--text-primary)',
-                            border: '1.5px solid var(--accent)',
-                            background: 'var(--accent-subtle)',
-                        }}
-                        title={t('app.editor.new', locale)}
-                    >
-                        {/* Subtle shine effect on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-
-                        <RotateCcw size={14} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
-                        <span className="hidden md:inline relative z-10 font-medium">{t('app.editor.new', locale)}</span>
-                    </button>
-
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    {/* 1. Copy */}
                     <button
                         onClick={handleCopy}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                        className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
                         style={{
                             color: copied ? '#34d399' : 'var(--text-muted)',
                             border: `1px solid ${copied ? 'rgba(16,185,129,0.3)' : 'var(--border-subtle)'}`,
@@ -412,18 +384,35 @@ export default function NotesEditor() {
                         <span className="hidden md:inline">{copied ? t('app.editor.copied', locale) : t('app.editor.copy', locale)}</span>
                     </button>
 
-                    {/* Style Selector */}
+                    {/* 2. Transcript */}
+                    <button
+                        onClick={() => setShowTranscript(!showTranscript)}
+                        className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                        style={{
+                            background: showTranscript ? 'var(--accent-subtle)' : 'transparent',
+                            color: showTranscript ? 'var(--accent)' : 'var(--text-muted)',
+                            border: `1px solid ${showTranscript ? 'var(--accent)' : 'var(--border-subtle)'}`
+                        }}
+                        title={locale === 'es' ? 'Ver transcripción original' : 'View original transcript'}
+                    >
+                        <MessageSquareText size={14} />
+                        <span className="hidden md:inline">{locale === 'es' ? 'Transcripción' : 'Transcript'}</span>
+                    </button>
+
+                    <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
+
+                    {/* 3. Style Selector */}
                     <div className="relative">
                         <button
                             onClick={() => setIsStyleOpen(!isStyleOpen)}
-                            className="flex items-center gap-1.5 p-2 sm:px-2.5 sm:py-1.5 rounded-md border border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors whitespace-nowrap"
+                            className="flex items-center gap-2 px-2.5 py-1.5 rounded-md border border-[var(--border-subtle)] hover:bg-[var(--bg-tertiary)] transition-colors whitespace-nowrap"
                             style={{ color: 'var(--text-secondary)' }}
                             title={t('app.config.pdfstyle', locale)}
                         >
+                            <Palette size={14} className="flex-shrink-0" />
                             <span className="capitalize hidden sm:inline text-xs font-medium">{t(`app.style.${pdfStyle}` as any, locale)}</span>
-                            <div style={{ color: 'var(--text-muted)' }}>
-                                <PenLine size={16} className="sm:hidden" />
-                                <svg className="hidden sm:block" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                            <div className="hidden sm:block opacity-50">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                             </div>
                         </button>
 
@@ -462,9 +451,23 @@ export default function NotesEditor() {
                         )}
                     </div>
 
+                    <button
+                        onClick={reset}
+                        className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md transition-all duration-300 whitespace-nowrap group relative overflow-hidden"
+                        style={{
+                            color: 'var(--text-primary)',
+                            border: '1.5px solid var(--accent)',
+                            background: 'var(--accent-subtle)',
+                        }}
+                        title={t('app.editor.new', locale)}
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                        <RotateCcw size={14} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
+                        <span className="hidden md:inline relative z-10 font-medium">{t('app.editor.new', locale)}</span>
+                    </button>
+
                     <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
 
-                    {/* View PDF Button */}
                     <button
                         onClick={() => {
                             let finalContent = showTranscript ? transcription : editedNotes;
@@ -483,21 +486,22 @@ export default function NotesEditor() {
                                 duration: '',
                                 content: finalContent,
                                 style: pdfStyle,
+                                locale: locale,
                             }, 'blob');
                             if (url && typeof url === 'string') window.open(url, '_blank');
                         }}
-                        className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                        className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
                         style={{ color: 'var(--text-primary)', border: '1px solid var(--border-subtle)' }}
                         title={locale === 'es' ? 'Ver PDF' : 'View PDF'}
                     >
-                        <ExternalLink size={14} />
+                        <FileText size={14} />
                         <span className="hidden md:inline">PDF</span>
                     </button>
 
                     <button
                         onClick={handleDownload}
                         disabled={downloading}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium text-white transition-colors whitespace-nowrap"
+                        className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md font-medium text-white transition-colors whitespace-nowrap"
                         style={{ background: downloaded ? '#10b981' : 'var(--accent)' }}
                     >
                         {downloading ? <Loader2 size={14} className="animate-spin" /> : downloaded ? <Check size={14} /> : <Download size={14} />}

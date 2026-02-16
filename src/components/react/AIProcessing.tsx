@@ -45,7 +45,7 @@ export default function AIProcessing() {
                 </h2>
                 <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
                     {provider === 'gemini'
-                        ? (locale === 'es' ? 'Gemini Flash 2.0 está creando tus apuntes' : 'Gemini Flash 2.0 is creating your notes')
+                        ? (locale === 'es' ? 'Gemini Pro 2.5 está creando tus apuntes' : 'Gemini Pro 2.5 is creating your notes')
                         : t('app.ai.desc', locale)
                     }
                 </p>
@@ -91,7 +91,7 @@ export default function AIProcessing() {
             <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md" style={{
                 background: 'var(--accent-subtle)', border: '1px solid var(--accent)', color: 'var(--accent)',
             }}>
-                {provider === 'gemini' ? 'Gemini Flash 2.0' : 'Llama 3.3 70B'}
+                {provider === 'gemini' ? 'Gemini Pro 2.5' : 'Llama 4 scout'}
             </div>
         </div>
     );

@@ -1,20 +1,22 @@
 import { Mp3Encoder } from '@breezystack/lamejs';
 
 self.onmessage = (e) => {
-    const { pcmData, sampleRate } = e.data;
+    // Default bitrate 64kbps if not provided
+    const { pcmData, sampleRate, bitrate = 64 } = e.data;
 
     if (!pcmData) return;
 
     try {
-        const mp3Data = encodeMp3(pcmData, sampleRate);
-        self.postMessage({ type: 'complete', mp3Data });
+        const mp3BufferList = encodeMp3(pcmData, sampleRate, bitrate);
+        self.postMessage({ type: 'complete', mp3Data: mp3BufferList });
     } catch (err) {
         self.postMessage({ type: 'error', error: err.message });
     }
 };
 
-function encodeMp3(samples, sampleRate) {
-    const encoder = new Mp3Encoder(1, sampleRate, 64); // 64kbps mono
+function encodeMp3(samples, sampleRate, bitrate) {
+    // 1 channel (mono), sampleRate, bitrate (kbps)
+    const encoder = new Mp3Encoder(1, sampleRate, bitrate);
     const blockSize = 1152;
     const mp3Data = [];
     const totalBlocks = Math.ceil(samples.length / blockSize);

@@ -42,95 +42,74 @@ export default function AppMain() {
         }
     }, [error, setError]);
 
-    // Browser navigation (History API) & Guards
+    // Browser navigation & Strict Guards (Unified)
     useEffect(() => {
-        // Guard 1: Redirect to upload if no data but trying to access processing/editor
-        // Guard 2: Redirect to editor if we have data but are in upload
+        const syncAndCheck = () => {
+            const currentStoreState = useAppStore.getState();
+            const currentStep = currentStoreState.step;
+            const hasNotes = !!currentStoreState.organizedNotes;
+            const hasTrans = !!currentStoreState.transcription;
+            const processingSt = currentStoreState.processingState;
+            const isProcessing = ['compressing', 'uploading', 'transcribing', 'analyzing'].includes(processingSt);
 
-        const currentStep = useAppStore.getState().step;
-        const hasData = !!useAppStore.getState().editedNotes;
-        const hasTrans = !!useAppStore.getState().transcription;
-        const processingSt = useAppStore.getState().processingState;
-        const isProcessing = ['compressing', 'uploading', 'transcribing'].includes(processingSt);
+            let correctedStep = currentStep;
 
-        // Guard: If processing, always show progress (unless we have data/editor)
-        if (isProcessing) {
-            // Force redirect if we are on upload step or have no meaningful step
-            if (currentStep === 'upload' || !currentStep) {
-                const target = processingSt === 'done' ? 'ai-processing' : 'transcribing';
-                useAppStore.setState({ step: target });
-                history.replaceState({ step: target }, '', `#${target}`);
-                return;
+            // 1. Force progression if processing
+            if (isProcessing && currentStep === 'upload') {
+                correctedStep = 'transcribing';
             }
-        }
+            // 2. Force retreat if no data and idle
+            else if (!hasNotes && !hasTrans && !isProcessing && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
+                correctedStep = 'upload';
+            }
+            // 3. Prevent stuck in upload if data exists
+            else if (hasNotes && currentStep === 'upload') {
+                correctedStep = 'editor';
+            }
 
-        // Initial check on load
-        if (hasData && currentStep === 'upload') {
-            // User has data but is at upload? Maybe they want to see their work.
-            useAppStore.setState({ step: 'editor' });
-            history.replaceState({ step: 'editor' }, '', '#editor');
-        } else if (!hasData && !hasTrans && !isProcessing && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
-            // Invalid state (reload on processing step without data)
-            useAppStore.setState({ step: 'upload' });
-            history.replaceState({ step: 'upload' }, '', '#upload');
-        } else if (!history.state) {
-            history.replaceState({ step: currentStep }, '', `#${currentStep}`);
-        }
+            if (correctedStep !== currentStep) {
+                // State correction: use replace to avoid polluting history with invalid states
+                useAppStore.setState({ step: correctedStep });
+                history.replaceState({ step: correctedStep }, '', `#${correctedStep}`);
+            } else if (history.state?.step !== currentStep) {
+                // State sync: store changed (start/done), sync history
+                history.pushState({ step: currentStep }, '', `#${currentStep}`);
+            }
+        };
+
+        syncAndCheck();
 
         const handlePopState = (e: PopStateEvent) => {
             const s = e.state?.step;
-            const currentStoreStep = useAppStore.getState().step;
-            const storeHasData = !!useAppStore.getState().editedNotes;
+            const currentStoreState = useAppStore.getState();
+            const isProcessing = ['compressing', 'uploading', 'transcribing', 'analyzing'].includes(currentStoreState.processingState);
 
             if (s) {
-                // Guard: If we have generated notes, block going back to 'transcribing' or 'ai-processing'
-                if (storeHasData && (s === 'transcribing' || s === 'ai-processing')) {
-                    // Force stay on editor
+                // Security: Block backtracking to upload while a heavy process is active
+                if (isProcessing && s === 'upload') {
+                    history.pushState({ step: currentStoreState.step }, '', `#${currentStoreState.step}`);
+                    return;
+                }
+
+                // Convenience: Avoid revisiting loading screens once notes are ready
+                if (!!currentStoreState.organizedNotes && (s === 'transcribing' || s === 'ai-processing')) {
                     history.pushState({ step: 'editor' }, '', '#editor');
                     useAppStore.setState({ step: 'editor' });
                     return;
                 }
 
-                // Guard: If we are going to editor but have no notes?
-                if (s === 'editor' && !storeHasData) {
-                    history.replaceState({ step: 'upload' }, '', '#upload');
-                    useAppStore.setState({ step: 'upload' });
-                    return;
-                }
-
                 useAppStore.setState({ step: s });
-            } else {
-                // Default to upload if no state
-                useAppStore.setState({ step: 'upload' });
             }
         };
 
         window.addEventListener('popstate', handlePopState);
         return () => window.removeEventListener('popstate', handlePopState);
-    }, []);
+    }, [step, processingState]);
 
-    // Sync step to history
-    useEffect(() => {
-        const currentRec = history.state?.step;
-        if (currentRec !== step) {
-            // If dragging slider or step checks, usage might trigger rapid updates? 
-            // Step only changes on major transitions.
-            if (step === 'upload') {
-                // If going back to upload explicitly, maybe replace?
-                // For now, push.
-                history.pushState({ step }, '', `#${step}`);
-            } else {
-                history.pushState({ step }, '', `#${step}`);
-            }
-        }
-    }, [step]);
-
-    // Sync with external language changes (from Navbar.astro if present on same page, or just for consistency)
+    // Language & Theme Sync
     useEffect(() => {
         const handleLangChange = (e: any) => {
-            if (e.detail && (e.detail === 'es' || e.detail === 'en')) {
-                setLocale(e.detail);
-            }
+            if (e.detail && (e.detail === 'es' || e.detail === 'en')) setLocale(e.detail);
         };
         window.addEventListener('scn-lang-change' as any, handleLangChange);
         return () => window.removeEventListener('scn-lang-change' as any, handleLangChange);
@@ -146,7 +125,6 @@ export default function AppMain() {
         }
     };
 
-    // Sync with external theme changes
     useEffect(() => {
         const handleThemeChange = (e: any) => {
             if (e.detail && (e.detail === 'light' || e.detail === 'dark')) {
@@ -157,13 +135,26 @@ export default function AppMain() {
         return () => window.removeEventListener('scn-theme-change' as any, handleThemeChange);
     }, []);
 
-    // Sync Provider badge with Global Navbar
+    // Provider Badge Sync
     useEffect(() => {
         const label = document.getElementById('provider-label');
-        if (label) label.textContent = provider === 'gemini' ? 'Gemini' : 'Groq';
-    }, [provider]);
+        const badge = document.getElementById('provider-badge');
 
-    // Handle open config from Global Navbar
+        if (label && badge) {
+            label.textContent = provider === 'gemini' ? 'Gemini' : 'Groq';
+            if (!isConnected) {
+                badge.style.display = 'none';
+            } else {
+                badge.style.display = 'flex';
+                badge.style.background = 'rgba(16,185,129,0.1)';
+                badge.style.color = '#34d399';
+                badge.style.borderColor = 'rgba(16,185,129,0.3)';
+                const indicator = badge.querySelector('span');
+                if (indicator) indicator.className = 'w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.5)]';
+            }
+        }
+    }, [provider, isConnected]);
+
     useEffect(() => {
         const handleOpenConfig = () => setConfigOpen(true);
         window.addEventListener('scn-open-config' as any, handleOpenConfig);
@@ -172,13 +163,13 @@ export default function AppMain() {
 
     return (
         <div className="min-h-screen flex flex-col pt-14" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            {/* Main content */}
-            <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-                <div className="w-full flex flex-col items-center">
-                    {/* Estilos para el ajuste de posición vertical (Solo aplica a los pasos iniciales) */}
+            <main className="flex-1 flex items-center justify-center p-4 sm:p-6" style={{ minHeight: '75vh' }}>
+                <div className={`w-full flex flex-col items-center ${step !== 'editor' ? 'vertical-offset-container' : ''}`}>
                     <style>{`
                         .vertical-offset-container {
+                            transition: margin-top 0.4s cubic-bezier(0.16, 1, 0.3, 1);
                             margin-top: ${MOBILE_VERTICAL_OFFSET};
+                            will-change: margin-top;
                         }
                         @media (min-width: 1024px) {
                             .vertical-offset-container {
@@ -189,17 +180,17 @@ export default function AppMain() {
 
                     <AnimatePresence mode="wait">
                         {step === 'upload' && (
-                            <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-2xl vertical-offset-container">
+                            <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-2xl">
                                 <UploadZone />
                             </motion.div>
                         )}
                         {step === 'transcribing' && (
-                            <motion.div key="transcribing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-lg vertical-offset-container">
+                            <motion.div key="transcribing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-lg">
                                 <TranscriptionProgress />
                             </motion.div>
                         )}
                         {step === 'ai-processing' && (
-                            <motion.div key="ai" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3 }} className="w-full max-w-lg vertical-offset-container">
+                            <motion.div key="ai" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3 }} className="w-full max-w-lg">
                                 <AIProcessing />
                             </motion.div>
                         )}

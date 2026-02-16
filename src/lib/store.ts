@@ -224,6 +224,18 @@ export const useAppStore = create<AppState>()(
             setCurrentProjectId: (id) => set({ currentProjectId: id }),
 
             startProcessing: async (file) => {
+                const state = get();
+                const key = await state.activeKey();
+
+                if (!key) {
+                    console.warn('[Store] 🚫 Cannot start: Missing API Key');
+                    set({
+                        error: state.locale === 'es' ? 'Falta configurar la API Key' : 'API Key missing',
+                        configOpen: true
+                    });
+                    return;
+                }
+
                 // Initialize DB Project
                 try {
                     const id = await createProject(file.name);
@@ -252,15 +264,28 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
-            cancelProcessing: () => set({
-                processingState: 'idle',
-                processingProgress: 0,
-                file: null,
-                step: 'upload',
-                currentProjectId: null,
-                transcription: '',
-                organizedNotes: ''
-            }),
+            cancelProcessing: async () => {
+                const { currentProjectId } = get();
+                if (currentProjectId) {
+                    try {
+                        await db.projects.update(currentProjectId, { status: 'cancelled' });
+                    } catch (e) {
+                        console.error('Failed to update project status:', e);
+                    }
+                }
+                set({
+                    processingState: 'idle',
+                    processingProgress: 0,
+                    file: null,
+                    step: 'upload',
+                    currentProjectId: null,
+                    transcription: '',
+                    organizedNotes: '',
+                    editedNotes: '',
+                    title: '',
+                    compressionInfo: ''
+                });
+            },
 
             restoreSession: async () => {
                 if (typeof window === 'undefined') return;
@@ -281,6 +306,14 @@ export const useAppStore = create<AppState>()(
                         // Note: The rest of the state (transcription, notes) is handled by zustand persist
                         // But we might need to nudge the GlobalAudioProcessor to resume if state was mid-process
                         if (active.project.status === 'processing') {
+                            const key = await get().activeKey();
+                            if (!key) {
+                                console.warn('Cannot resume: No API Key found');
+                                // Reset project status in DB so it doesn't try again
+                                await db.projects.update(active.project.id, { status: 'cancelled' });
+                                return;
+                            }
+
                             console.log('Auto-resuming interrupted process...');
                             set({
                                 processingState: 'compressing',

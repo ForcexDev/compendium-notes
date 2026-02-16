@@ -6,12 +6,35 @@ import { t } from '../../lib/i18n';
 
 import AudioRecorder from './AudioRecorder';
 
+// FORMATOS SOPORTADOS - Cobertura completa móvil + PC + grabadoras
 const ACCEPTED = [
-    'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/flac',
-    'audio/webm', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'audio/x-aac',
-    'video/mp4', 'video/quicktime', 'video/webm'
+    // Audio estándar (universal)
+    'audio/mpeg', 'audio/mp3',                    // MP3
+    'audio/mp4', 'audio/x-m4a', 'audio/m4a',      // M4A (iPhone, Android, Zoom)
+    'audio/aac', 'audio/x-aac',                   // AAC
+    'audio/wav', 'audio/x-wav',                   // WAV
+
+    // Audio móvil/web
+    'audio/ogg',                                  // OGG (Android, Telegram)
+    'audio/opus',                                 // Opus (WhatsApp, Discord)
+    'audio/webm',                                 // WebM (Chrome recording)
+
+    // Audio alta calidad
+    'audio/flac', 'audio/x-flac',                 // FLAC (grabadoras profesionales)
+    'audio/aiff', 'audio/x-aiff',                 // AIFF (Mac/Logic Pro)
+    'audio/wma',                                  // WMA (Windows)
+
+    // Video (extracción de audio)
+    'video/mp4',                                  // MP4 universal
+    'video/quicktime',                            // MOV (iPhone)
+    'video/webm',                                 // WebM (Chrome recording)
+    'video/x-matroska',                           // MKV
+    'video/avi',                                  // AVI
+    'video/x-msvideo',                            // AVI alternativo
 ];
-const MAX_SIZE = 200 * 1024 * 1024; // 200MB
+
+const MAX_SIZE_GROQ = 150 * 1024 * 1024; // 150MB para Groq (que luego comprime)
+const MAX_SIZE_GEMINI = 500 * 1024 * 1024; // 500MB para Gemini
 
 export default function UploadZone() {
     const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState } = useAppStore();
@@ -19,6 +42,10 @@ export default function UploadZone() {
     const [isRecording, setIsRecording] = useState(false);
     const [showHint, setShowHint] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Dynamic Max Size based on Provider
+    const currentMaxSize = provider === 'gemini' ? MAX_SIZE_GEMINI : MAX_SIZE_GROQ;
+    const currentMaxSizeLabel = provider === 'gemini' ? '500MB' : '150MB';
 
     // Show hint if processing is active but stuck in this view
     useEffect(() => {
@@ -33,20 +60,34 @@ export default function UploadZone() {
 
     const validate = useCallback((f: File): boolean => {
         const isSupportedType = f.type && ACCEPTED.includes(f.type);
-        const isSupportedExtension = f.name.match(/\.(mp3|m4a|wav|ogg|flac|webm|mp4|mov|aac)$/i);
+
+        // Extensiones soportadas (cobertura completa)
+        const supportedExtensions = [
+            // Audio
+            'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'webm', 'flac', 'aiff', 'wma',
+            // Video
+            'mp4', 'mov', 'mkv', 'avi', 'webm'
+        ];
+        const isSupportedExtension = supportedExtensions.some(ext =>
+            f.name.toLowerCase().endsWith(`.${ext}`)
+        );
 
         if (!isSupportedType && !isSupportedExtension) {
             setError(locale === 'es'
-                ? 'Formato no soportado. Usa MP3, M4A, WAV, MP4 o MOV.'
-                : 'Unsupported format. Use MP3, M4A, WAV, MP4 or MOV.');
+                ? 'Formato no soportado. Usa MP3, M4A, WAV, OGG, OPUS, FLAC, MP4, MOV, MKV o WebM.'
+                : 'Unsupported format. Use MP3, M4A, WAV, OGG, OPUS, FLAC, MP4, MOV, MKV or WebM.');
             return false;
         }
-        if (f.size > MAX_SIZE) {
-            setError(locale === 'es' ? 'El archivo supera los 200MB.' : 'File exceeds 200MB.');
+
+        // Validación estricta de tamaño según proveedor
+        if (f.size > currentMaxSize) {
+            setError(locale === 'es'
+                ? `El archivo supera el límite de ${currentMaxSizeLabel} para ${provider === 'gemini' ? 'Gemini' : 'Groq'}.`
+                : `File exceeds the ${currentMaxSizeLabel} limit for ${provider === 'gemini' ? 'Gemini' : 'Groq'}.`);
             return false;
         }
         return true;
-    }, [setError, locale]);
+    }, [setError, locale, currentMaxSize, currentMaxSizeLabel, provider]);
 
     const handleFile = useCallback((f: File) => {
         if (validate(f)) setFile(f);
@@ -115,7 +156,7 @@ export default function UploadZone() {
                     id="file-upload"
                     name="file-upload"
                     type="file"
-                    accept="audio/*,video/*,.mp3,.m4a,.wav,.ogg,.flac,.webm,.mp4,.mov"
+                    accept="audio/*,video/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.webm,.flac,.aiff,.wma,.mp4,.mov,.mkv,.avi"
                     className="hidden"
                     onChange={(e) => {
                         if (e.target.files?.[0]) {
@@ -136,7 +177,10 @@ export default function UploadZone() {
                                 {isDragging ? t('app.upload.dropping', locale) : t('app.upload.drop', locale)}
                             </p>
                             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                {t('app.upload.formats', locale)}
+                                {locale === 'es'
+                                    ? `Soporta MP3, M4A, WAV, OGG, OPUS, FLAC, MP4, MOV • Hasta ${currentMaxSizeLabel}`
+                                    : `Supports MP3, M4A, WAV, OGG, OPUS, FLAC, MP4, MOV • Up to ${currentMaxSizeLabel}`
+                                }
                             </p>
                         </div>
                         <div className="flex items-center justify-center gap-3">
@@ -182,13 +226,22 @@ export default function UploadZone() {
                 )}
                 {/* Hint for blocked state */}
                 {showHint && processingState !== 'idle' && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4">
-                        <p className="text-[10px] text-center opacity-60 flex items-center justify-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
-                            <RefreshCw size={10} />
-                            {locale === 'es'
-                                ? '¿Se quedó pegado? Presiona Ctrl+F5 para recargar.'
-                                : 'Stuck? Press Ctrl+F5 to reload.'}
-                        </p>
+                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="mt-4">
+                        <div className="flex flex-col items-center gap-2">
+                            <p className="text-[10px] text-center opacity-60" style={{ color: 'var(--text-muted)' }}>
+                                {t('app.processing.reset_desc', locale as any)}
+                            </p>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    useAppStore.getState().reset();
+                                }}
+                                className="group flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider py-2 px-4 rounded-full transition-all border border-[var(--accent)]/30 hover:border-[var(--accent)] hover:bg-[var(--accent)]/10 text-[var(--accent)]"
+                            >
+                                <RefreshCw size={12} className="group-hover:rotate-180 transition-transform duration-700" />
+                                {t('app.processing.stuck_btn', locale as any)}
+                            </button>
+                        </div>
                     </motion.div>
                 )}
 
@@ -230,12 +283,12 @@ export default function UploadZone() {
                     <div className="p-4 rounded-xl border transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-subtle)' }}>
                         <div className="flex items-center gap-2 mb-2" style={{ color: '#60a5fa' }}>
                             <BrainCircuit size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Gemini Flash 2.0</span>
+                            <span className="text-xs font-semibold uppercase tracking-wider">Gemini Flash 2.0 + Pro 2.5</span>
                         </div>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {locale === 'es'
-                                ? 'Perfecto para audios muy largos (> 1h), archivos pesados o contenido complejo que requiere razonamiento profundo.'
-                                : 'Perfect for very long audios (> 1h), large files, or complex content requiring deep reasoning.'}
+                                ? 'Perfecto para audios muy largos (> 1h), cualquier formato (M4A, OPUS, FLAC, MKV, etc.) y contenido complejo.'
+                                : 'Perfect for very long audios (> 1h), any format (M4A, OPUS, FLAC, MKV, etc.) and complex content.'}
                         </p>
                     </div>
                 </div>

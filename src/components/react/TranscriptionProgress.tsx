@@ -1,7 +1,8 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import { Loader2, Shrink, AudioLines, Check, Upload } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, Shrink, AudioLines, Check, Upload, Sparkles, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
+import { t } from '../../lib/i18n';
 
 // NOTE: Logic moved to GlobalAudioProcessor. This component just renders state.
 type Stage = 'compressing' | 'uploading' | 'transcribing' | 'done' | 'error' | 'idle';
@@ -11,6 +12,30 @@ export default function TranscriptionProgress() {
         file, provider, locale,
         processingState, processingProgress, compressionInfo
     } = useAppStore();
+
+    const [showPatience, setShowPatience] = React.useState(false);
+
+    React.useEffect(() => {
+        let timer: NodeJS.Timeout;
+        const isActive = processingState !== 'idle' && processingState !== 'done' && processingState !== 'error';
+
+        if (isActive) {
+            // Reiniciar timer si cambiamos de estado para dar margen a cada etapa
+            setShowPatience(false);
+            timer = setTimeout(() => {
+                setShowPatience(true);
+            }, 30000); // 30 segundos de margen por etapa
+        } else {
+            setShowPatience(false);
+        }
+        return () => clearTimeout(timer);
+    }, [processingState]);
+
+    // Lógica bimodal de tips
+    const isGeminiStage = processingState === 'uploading' || processingState === 'transcribing';
+    const patienceKey = (provider === 'gemini' && isGeminiStage)
+        ? 'app.processing.patience.gemini'
+        : 'app.processing.patience';
 
     // Map internal store processingState to UI stage (simplify "done" and "idle" as fallback)
     const stage = processingState === 'idle' || processingState === 'done' || processingState === 'error'
@@ -39,8 +64,8 @@ export default function TranscriptionProgress() {
                 ? (provider === 'gemini' ? 'Transcribiendo con Gemini...' : 'Transcribiendo...')
                 : (provider === 'gemini' ? 'Transcribing with Gemini...' : 'Transcribing...'),
             desc: locale === 'es'
-                ? (provider === 'gemini' ? 'Procesando con Gemini Flash 2.0' : 'Procesando con Whisper V3 y Llama 3.3')
-                : (provider === 'gemini' ? 'Processing with Gemini Flash 2.0' : 'Processing with Whisper V3 and Llama 3.3'),
+                ? (provider === 'gemini' ? 'Procesando con Gemini Pro 2.5' : 'Procesando con Whisper V3 y Llama 4 scout')
+                : (provider === 'gemini' ? 'Processing with Gemini Pro 2.5' : 'Processing with Whisper V3 and Llama 4 scout'),
             icon: AudioLines,
         },
     };
@@ -111,6 +136,47 @@ export default function TranscriptionProgress() {
                 </p>
             </div>
 
+            {/* Patience message (Game Tip Style) */}
+            <AnimatePresence>
+                {showPatience && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="max-w-md mx-auto mt-8 relative px-6 py-4 rounded-xl border backdrop-blur-md overflow-hidden group"
+                        style={{
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            borderColor: 'rgba(255, 255, 255, 0.08)',
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        {/* Shimmer effect */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" style={{ animationDuration: '2s' }} />
+
+                        {/* Content Container */}
+                        <div className="flex items-center gap-4 relative z-10">
+                            {/* Icon (Simple, no frame) */}
+                            <div className="flex-shrink-0">
+                                <div className="p-2 rounded-lg bg-[rgba(168,85,247,0.1)]">
+                                    <Sparkles size={20} className="text-[var(--accent)]" />
+                                </div>
+                            </div>
+
+                            {/* Text Content */}
+                            <div className="flex flex-col items-start text-left">
+                                <span className="text-[10px] font-bold uppercase tracking-widest mb-1 opacity-80" style={{ color: 'var(--accent)' }}>
+                                    {locale === 'es' ? 'TIP' : 'TIP'}
+                                </span>
+                                <p className="text-sm font-medium leading-relaxed opacity-90" style={{ color: 'var(--text-secondary)' }}>
+                                    {t(patienceKey as any, locale)}
+                                </p>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Progress bar */}
             <div className="max-w-xs mx-auto">
                 <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-tertiary)' }}>
@@ -142,7 +208,7 @@ export default function TranscriptionProgress() {
                 <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md" style={{
                     background: 'var(--accent-subtle)', border: '1px solid var(--accent)', color: 'var(--accent)',
                 }}>
-                    {provider === 'gemini' ? 'Gemini Flash' : 'Llama 4 Scout'}
+                    {provider === 'gemini' ? 'Gemini Pro 2.5' : 'Llama 4 Scout'}
                 </div>
                 {file && (
                     <div className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-md" style={{
@@ -154,6 +220,17 @@ export default function TranscriptionProgress() {
                     </div>
                 )}
             </div>
+
+            {/* Cancel / Panic Button */}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }} className="pt-2">
+                <button
+                    onClick={() => useAppStore.getState().cancelProcessing()}
+                    className="group inline-flex items-center gap-2 text-xs font-medium py-2 px-4 rounded-lg transition-all border border-red-500/20 hover:border-red-500/40 hover:bg-red-500/10 text-red-500/80 hover:text-red-500"
+                >
+                    <RefreshCw size={12} className="group-hover:rotate-180 transition-transform duration-500" />
+                    {t('app.processing.cancel', locale as any)}
+                </button>
+            </motion.div>
 
         </div>
     );

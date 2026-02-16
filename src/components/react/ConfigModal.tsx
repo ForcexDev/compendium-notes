@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Eye, EyeOff, Clipboard, ExternalLink, Check, BadgeCheck, Loader2 } from 'lucide-react';
+import { X, Eye, EyeOff, Clipboard, ExternalLink, Check, BadgeCheck, Loader2, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import { validateGroqKey } from '../../lib/groq';
@@ -131,7 +131,7 @@ export default function ConfigModal() {
                                 }}
                             >
                                 <span className="block font-semibold mb-0.5">Gemini</span>
-                                <span className="block text-[10px] opacity-70">Flash 2.0</span>
+                                <span className="block text-[10px] opacity-70">Flash 2.0 + Pro 2.5</span>
                             </button>
                         </div>
                     </div>
@@ -161,7 +161,13 @@ export default function ConfigModal() {
                                 )}
                             </label>
                             <div className="flex gap-2">
-                                <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${groqInput.length > 0 && !groqInput.startsWith('gsk_') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: groqInput.length > 0 && !groqInput.startsWith('gsk_') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
+                                <div
+                                    className={`flex-1 flex items-center rounded-lg px-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg-secondary)] ${groqInput.length > 0 && !groqInput.startsWith('gsk_') ? 'border-red-500/50 bg-red-500/5' : ''}`}
+                                    style={{
+                                        background: 'var(--bg-primary)',
+                                        border: groqInput.length > 0 && !groqInput.startsWith('gsk_') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)'
+                                    }}
+                                >
                                     <input
                                         ref={inputRef}
                                         id="groq-api-key"
@@ -170,16 +176,27 @@ export default function ConfigModal() {
                                         value={groqInput}
                                         onChange={(e) => setGroqInput(e.target.value)}
                                         placeholder={apiKey ? t('app.config.new_key', locale) : 'gsk_...'}
-                                        className="flex-1 bg-transparent border-none outline-none text-sm py-2.5 font-mono"
+                                        className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
                                     <button onClick={() => setShowGroq(!showGroq)} className="p-1 ml-1" style={{ color: 'var(--text-muted)' }}>
                                         {showGroq ? <EyeOff size={14} /> : <Eye size={14} />}
                                     </button>
                                 </div>
-                                <button onClick={() => handlePaste('groq')} className="px-3 rounded-lg text-xs transition-colors" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}>
+                                <button onClick={() => handlePaste('groq')} className="px-3 rounded-lg text-xs transition-colors" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }} title={t('app.config.paste', locale)}>
                                     <Clipboard size={14} />
                                 </button>
+                                {apiKey && (
+                                    <button
+                                        onClick={() => !isProcessing && setApiKey('')}
+                                        disabled={isProcessing}
+                                        className={`px-3 rounded-lg text-xs transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-500/10 hover:text-red-500'}`}
+                                        style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
+                                        title={t('app.config.clear', locale)}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                )}
                             </div>
                             <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-2 no-underline transition-colors" style={{ color: 'var(--accent)' }}>
                                 {t('app.config.groq.get', locale)}
@@ -213,7 +230,13 @@ export default function ConfigModal() {
                                 )}
                             </label>
                             <div className="flex gap-2">
-                                <div className={`flex-1 flex items-center rounded-lg px-3 transition-colors ${geminiInput.length > 0 && !geminiInput.startsWith('AI') ? 'border-red-500/50 bg-red-500/5' : ''}`} style={{ background: 'var(--bg-primary)', border: geminiInput.length > 0 && !geminiInput.startsWith('AI') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)' }}>
+                                <div
+                                    className={`flex-1 flex items-center rounded-lg px-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg-secondary)] ${geminiInput.length > 0 && !geminiInput.startsWith('AI') ? 'border-red-500/50 bg-red-500/5' : ''}`}
+                                    style={{
+                                        background: 'var(--bg-primary)',
+                                        border: geminiInput.length > 0 && !geminiInput.startsWith('AI') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)'
+                                    }}
+                                >
                                     <input
                                         id="gemini-api-key"
                                         name="gemini-api-key"
@@ -221,16 +244,27 @@ export default function ConfigModal() {
                                         value={geminiInput}
                                         onChange={(e) => setGeminiInput(e.target.value)}
                                         placeholder={geminiKey ? t('app.config.new_key', locale) : 'AIza...'}
-                                        className="flex-1 bg-transparent border-none outline-none text-sm py-2.5 font-mono"
+                                        className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
                                     <button onClick={() => setShowGemini(!showGemini)} className="p-1 ml-1" style={{ color: 'var(--text-muted)' }}>
                                         {showGemini ? <EyeOff size={14} /> : <Eye size={14} />}
                                     </button>
                                 </div>
-                                <button onClick={() => handlePaste('gemini')} className="px-3 rounded-lg text-xs transition-colors" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}>
+                                <button onClick={() => handlePaste('gemini')} className="px-3 rounded-lg text-xs transition-colors" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }} title={t('app.config.paste', locale)}>
                                     <Clipboard size={14} />
                                 </button>
+                                {geminiKey && (
+                                    <button
+                                        onClick={() => !isProcessing && setGeminiKey('')}
+                                        disabled={isProcessing}
+                                        className={`px-3 rounded-lg text-xs transition-colors ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'hover:bg-red-500/10 hover:text-red-500'}`}
+                                        style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
+                                        title={t('app.config.clear', locale)}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                )}
                             </div>
                             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-2 no-underline transition-colors" style={{ color: 'var(--accent)' }}>
                                 {t('app.config.gemini.get', locale)}
