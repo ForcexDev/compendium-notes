@@ -15,29 +15,39 @@ export interface Props {
 
 const {
   title,
-  description = 'Transform recorded lectures into structured study notes with AI.',
-  lang = 'es',
+  description = 'Transcribe audio and video to structured markdown notes completely free with AI. Export to professional PDF. Best tool for students and meetings.',
+  lang = 'en',
 } = Astro.props;
 ---
 
 <!DOCTYPE html>
-<html lang={lang}>
+<html lang={lang} class="no-transition">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://va.vercel-scripts.com https://unpkg.com; connect-src 'self' blob: https://api.groq.com https://generativelanguage.googleapis.com https://unpkg.com https://va.vercel-scripts.com https://vitals.vercel-insights.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.fontshare.com; font-src 'self' https://fonts.gstatic.com https://fonts.fontshare.com https://cdn.fontshare.com;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://va.vercel-scripts.com https://unpkg.com; connect-src 'self' blob: https://api.groq.com https://generativelanguage.googleapis.com https://unpkg.com https://va.vercel-scripts.com https://vitals.vercel-insights.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;" />
+    
+    <!-- Primary Meta Tags -->
+    <title>{title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title}</title>
+    <meta name="title" content={title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title} />
     <meta name="description" content={description} />
+    <meta name="keywords" content="transcribe audio, ai transcription free, speech to text markdown, summarize lectures, audio to pdf, meeting notes ai, whisper transcription, gemini flash, free transcription tool, compendium notes" />
     <meta name="theme-color" content="#09090b" />
     <meta name="generator" content={Astro.generator} />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
+    <meta property="og:title" content={title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title} />
+    <meta property="og:description" content={description} />
+    
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
     <meta name="google-site-verification" content="53AHVf3g0uTFJzGjxUgBoXeN7-bbDwyruX4z_VssiyA" />
 
-    <title>{title}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet" crossorigin="anonymous">
-    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@700,900&display=swap" rel="stylesheet" crossorigin="anonymous">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Montserrat:wght@400;700&family=Outfit:wght@400;700&display=swap" rel="stylesheet" crossorigin="anonymous">
     <ClientRouter />
 
     <script is:inline define:vars={{ translations }}>
@@ -68,27 +78,51 @@ const {
         document.querySelectorAll('[data-i18n]').forEach(el => {
           const key = el.getAttribute('data-i18n');
           if (translations[key] && translations[key][lang]) {
-            el.innerHTML = translations[key][lang];
+            const newContent = translations[key][lang];
+            // Skip if content is already correct to avoid unnecessary reflow
+            if (el.innerHTML !== newContent) {
+              el.innerHTML = newContent;
+            }
           }
         });
         const navToggle = document.getElementById('lang-toggle-nav');
-        if (navToggle) navToggle.textContent = lang.toUpperCase();
+        const newLang = lang.toUpperCase();
+        if (navToggle && navToggle.textContent !== newLang) navToggle.textContent = newLang;
       }
 
-      // Initialize Immediately
+      // Initialize Immediately (with transitions disabled via .no-transition)
       applyTheme(getTheme());
       
       // We must wait for DOM to apply language to components with data-i18n
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => applyLang(getLang()));
+        document.addEventListener('DOMContentLoaded', () => {
+          applyLang(getLang());
+          // Enable transitions after initial paint is complete
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              document.documentElement.classList.remove('no-transition');
+            });
+          });
+        });
       } else {
         applyLang(getLang());
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.documentElement.classList.remove('no-transition');
+          });
+        });
       }
 
       // Re-apply after Astro View Transition navigation
       document.addEventListener('astro:after-swap', () => {
+        document.documentElement.classList.add('no-transition');
         applyTheme(getTheme());
         applyLang(getLang());
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            document.documentElement.classList.remove('no-transition');
+          });
+        });
       });
 
       // Global Toggles
@@ -119,6 +153,28 @@ const {
           if (btn.id === 'config-toggle') window.dispatchEvent(new CustomEvent('scn-open-config'));
         }
       });
+
+      // Scroll Reveal Observer
+      function initReveal() {
+        const els = document.querySelectorAll('[data-reveal]');
+        if (!els.length) return;
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('revealed');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+        els.forEach(el => observer.observe(el));
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initReveal);
+      } else {
+        initReveal();
+      }
+      document.addEventListener('astro:page-load', initReveal);
     </script>
   </head>
   <body class="custom-scrollbar">

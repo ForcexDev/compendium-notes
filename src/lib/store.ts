@@ -3,7 +3,9 @@ import { persist } from 'zustand/middleware';
 
 export type AppStep = 'upload' | 'transcribing' | 'ai-processing' | 'editor';
 export type PdfStyle = 'minimalista' | 'academico' | 'cornell';
+export type SummaryLevel = 'short' | 'medium' | 'long';
 export type Locale = 'es' | 'en';
+export type OutputLanguage = string;
 export type Provider = 'groq' | 'gemini';
 export type ProcessingState = 'idle' | 'compressing' | 'uploading' | 'transcribing' | 'analyzing' | 'done' | 'error';
 
@@ -54,6 +56,14 @@ interface AppState {
     // PDF
     pdfStyle: PdfStyle;
     setPdfStyle: (style: PdfStyle) => void;
+
+    // Summary Level
+    summaryLevel: SummaryLevel;
+    setSummaryLevel: (level: SummaryLevel) => void;
+
+    // Output Language
+    outputLanguage: OutputLanguage;
+    setOutputLanguage: (lang: OutputLanguage) => void;
 
     // Config
     configOpen: boolean;
@@ -109,6 +119,12 @@ function getInitialProvider(): Provider {
     return 'groq';
 }
 
+function getInitialOutputLanguage(): OutputLanguage {
+    if (typeof window === 'undefined') return 'auto';
+    const stored = localStorage.getItem('scn-output-lang');
+    return stored || 'auto';
+}
+
 // Import DB dynamically to avoid SSR issues if store is used there (though unlikely in standard React usage)
 import { db, createProject, saveAudioSource, getActiveProject } from './db';
 import { encryptData, decryptData } from './crypto';
@@ -137,6 +153,12 @@ export const useAppStore = create<AppState>()(
             setProvider: (provider) => {
                 if (typeof window !== 'undefined') localStorage.setItem('scn-provider', provider);
                 set({ provider });
+            },
+
+            outputLanguage: getInitialOutputLanguage(),
+            setOutputLanguage: (outputLanguage) => {
+                if (typeof window !== 'undefined') localStorage.setItem('scn-output-lang', outputLanguage);
+                set({ outputLanguage });
             },
 
             apiKey: typeof window !== 'undefined' ? localStorage.getItem('scn-api-key') || '' : '',
@@ -203,6 +225,9 @@ export const useAppStore = create<AppState>()(
 
             pdfStyle: 'minimalista',
             setPdfStyle: (pdfStyle) => set({ pdfStyle }),
+
+            summaryLevel: 'short',
+            setSummaryLevel: (summaryLevel) => set({ summaryLevel }),
 
             title: '',
             setTitle: (title) => set({ title }),
@@ -291,9 +316,9 @@ export const useAppStore = create<AppState>()(
                 if (typeof window === 'undefined') return;
                 try {
                     const active = await getActiveProject();
-                    if (active && active.project.status !== 'done') {
-                        // Found a pending session
-                        console.log('Restoring session:', active.project.title);
+                    if (active && active.project.status !== 'cancelled') {
+                        // Found a session (pending or completed)
+                        console.log('Restoring session:', active.project.title, 'Status:', active.project.status);
 
                         // Rehydrate File
                         if (active.audio) {
@@ -355,6 +380,7 @@ export const useAppStore = create<AppState>()(
                 editedNotes: state.editedNotes,
                 title: state.title,
                 pdfStyle: state.pdfStyle,
+                summaryLevel: state.summaryLevel,
                 // Don't persist file or big blobs here
             }),
         }

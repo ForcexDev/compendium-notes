@@ -1,18 +1,117 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, Check, Download, Loader2, RotateCcw, PenLine, Eye, FileText, ExternalLink, Palette, MessageSquareText } from 'lucide-react';
+import { Copy, Check, Download, Loader2, RotateCcw, PenLine, Eye, FileText, ExternalLink, Palette, MessageSquareText, Sparkles, Play, Pause, Volume2, VolumeX, Type, Clock, Hash } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
+import type { SummaryLevel } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import { generatePdf } from '../../lib/pdf-generator';
+import { organizeNotes } from '../../lib/groq';
+import { organizeNotesWithGemini } from '../../lib/gemini';
+import SearchableLanguageSelect from './SearchableLanguageSelect';
 
 export default function NotesEditor() {
-    const { editedNotes, setEditedNotes, file, reset, locale, transcription, pdfStyle, setPdfStyle, title, theme } = useAppStore();
+    const { editedNotes, setEditedNotes, file, reset, locale, transcription, pdfStyle, setPdfStyle, title, theme, provider, activeKey, setOrganizedNotes, setTitle, summaryLevel, setSummaryLevel, outputLanguage } = useAppStore();
     const [copied, setCopied] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [downloaded, setDownloaded] = useState(false);
     const [isStyleOpen, setIsStyleOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'edit' | 'preview'>('preview');
     const [showTranscript, setShowTranscript] = useState(false);
+    const [isResummarizing, setIsResummarizing] = useState(false);
+    const [showResummarize, setShowResummarize] = useState(false);
+
+    // Audio Player State
+    const [audioPlaying, setAudioPlaying] = useState(false);
+    const [audioTime, setAudioTime] = useState(0);
+    const [audioDuration, setAudioDuration] = useState(0);
+    const [volume, setVolume] = useState(1);
+    const editorAudioRef = useRef<HTMLAudioElement | null>(null);
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const animationFrameRef = useRef<number | null>(null);
+    // Create blob URL for file
+    useEffect(() => {
+        if (file) {
+            const url = URL.createObjectURL(file);
+            setAudioUrl(url);
+            return () => {
+                URL.revokeObjectURL(url);
+                setAudioUrl(null);
+            };
+        }
+    }, [file]);
+    const stats = useMemo(() => {
+        const text = editedNotes || '';
+        const words = text.trim().split(/\s+/).filter(Boolean).length;
+        const readingTime = Math.max(1, Math.ceil(words / 200));
+        const sections = (text.match(/^#{1,3}\s/gm) || []).length;
+        return { words, readingTime, sections };
+    }, [editedNotes]);
+
+    // Smooth playback progress sync
+    const progressFillRef = useRef<HTMLDivElement | null>(null);
+    const timeDisplayRef = useRef<HTMLSpanElement | null>(null);
+
+    const formatAudioTime = (sec: number) => {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    useEffect(() => {
+        let frameId: number;
+        const updateProgress = () => {
+            if (editorAudioRef.current && progressFillRef.current && timeDisplayRef.current) {
+                const current = editorAudioRef.current.currentTime;
+                // Update DOM directly to avoid expensive React re-renders
+                if (audioDuration > 0 && audioDuration !== Infinity) {
+                    progressFillRef.current.style.width = `${(current / audioDuration) * 100}%`;
+                }
+                timeDisplayRef.current.innerText = formatAudioTime(current);
+            }
+            if (audioPlaying) frameId = requestAnimationFrame(updateProgress);
+        };
+        if (audioPlaying) {
+            frameId = requestAnimationFrame(updateProgress);
+        }
+        return () => {
+            if (frameId) cancelAnimationFrame(frameId);
+        };
+    }, [audioPlaying, audioDuration]);
+
+    const toggleAudio = () => {
+        const audio = editorAudioRef.current;
+        if (!audio) return;
+
+        if (audioPlaying) {
+            audio.pause();
+            setAudioPlaying(false);
+        } else {
+            audio.play().then(() => setAudioPlaying(true)).catch((e: any) => console.log(e));
+        }
+    };
+
+    const seekAudio = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!editorAudioRef.current || !audioDuration) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        editorAudioRef.current.currentTime = pct * audioDuration;
+        setAudioTime(pct * audioDuration);
+    };
+
+    const handleAudioLoadedMetadata = () => {
+        const audio = editorAudioRef.current;
+        if (!audio) return;
+        if (audio.duration === Infinity || isNaN(audio.duration)) {
+            audio.currentTime = 1e10;
+            audio.ontimeupdate = () => {
+                audio.ontimeupdate = null;
+                setAudioDuration(audio.duration);
+                audio.currentTime = 0;
+            };
+        } else {
+            setAudioDuration(audio.duration);
+        }
+    };
 
     // Derived title logic
     const derivedTitle = useMemo(() => {
@@ -399,6 +498,100 @@ export default function NotesEditor() {
                         <span className="hidden md:inline">{locale === 'es' ? 'Transcripción' : 'Transcript'}</span>
                     </button>
 
+                    {/* 2.5 Re-summarize */}
+                    {transcription && (
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowResummarize(!showResummarize)}
+                                disabled={isResummarizing}
+                                className="flex items-center gap-2 text-xs px-2.5 py-1.5 rounded-md transition-colors whitespace-nowrap"
+                                style={{
+                                    color: isResummarizing ? 'var(--accent)' : 'var(--text-muted)',
+                                    border: `1px solid var(--border-subtle)`,
+                                }}
+                                title={t('app.editor.resummarize', locale)}
+                            >
+                                {isResummarizing
+                                    ? <Loader2 size={14} className="animate-spin" />
+                                    : <Sparkles size={14} />}
+                                <span className="hidden md:inline">
+                                    {isResummarizing ? t('app.editor.resummarizing', locale) : t('app.editor.resummarize', locale)}
+                                </span>
+                            </button>
+
+                            {showResummarize && !isResummarizing && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-40 bg-black/20 sm:bg-transparent backdrop-blur-[1px] sm:backdrop-blur-none"
+                                        onClick={() => setShowResummarize(false)}
+                                    />
+                                    <div
+                                        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80vw] max-w-xs sm:absolute sm:top-full sm:right-0 sm:left-auto sm:translate-x-0 sm:translate-y-1 sm:w-56 p-1 rounded-lg shadow-2xl border border-[var(--border-subtle)] z-50 flex flex-col"
+                                        style={{ background: 'var(--bg-secondary)', overflow: 'visible' }}
+                                    >
+                                        <div className="px-3 py-2 text-xs font-semibold text-[var(--text-muted)] border-b border-[var(--border-subtle)] mb-1">
+                                            {t('app.summary.level', locale)}
+                                        </div>
+                                        {(['short', 'medium', 'long'] as const).map((level) => (
+                                            <button
+                                                key={level}
+                                                onClick={async () => {
+                                                    setShowResummarize(false);
+                                                    setIsResummarizing(true);
+                                                    try {
+                                                        const key = await activeKey();
+                                                        if (!key) throw new Error('API Key missing');
+
+                                                        if (provider === 'gemini') {
+                                                            const result = await organizeNotesWithGemini(transcription, key, undefined, level, outputLanguage);
+                                                            const titleMatch = result.notes.match(/^#\s+(.+)/m);
+                                                            let cleanNotes = result.notes;
+                                                            if (titleMatch) {
+                                                                setTitle(titleMatch[1].trim());
+                                                                cleanNotes = result.notes.replace(/^#\s+.+\n+/, '').trim();
+                                                            }
+                                                            setOrganizedNotes(cleanNotes);
+                                                        } else {
+                                                            const notes = await organizeNotes(transcription, key, undefined, level, outputLanguage);
+                                                            const titleMatch = notes.match(/^## Título\s*\n(.+)/m);
+                                                            let cleanNotes = notes;
+                                                            if (titleMatch) {
+                                                                setTitle(titleMatch[1].trim().replace(/\*\*/g, ''));
+                                                                cleanNotes = notes.replace(/^## Título\s*\n.+\n*/m, '').trim();
+                                                            }
+                                                            setOrganizedNotes(cleanNotes);
+                                                        }
+                                                        setSummaryLevel(level);
+                                                    } catch (err: any) {
+                                                        console.error('Re-summarize error:', err);
+                                                    } finally {
+                                                        setIsResummarizing(false);
+                                                    }
+                                                }}
+                                                className="text-left px-3 py-3 sm:py-2 text-sm sm:text-xs font-medium rounded-md transition-colors"
+                                                style={{
+                                                    color: summaryLevel === level ? 'var(--accent)' : 'var(--text-primary)',
+                                                    background: summaryLevel === level ? 'var(--accent-subtle)' : 'transparent',
+                                                }}
+                                            >
+                                                <span className="block">{t(`app.summary.${level}` as any, locale)}</span>
+                                                <span className="block text-[10px] opacity-60 mt-0.5">{t(`app.summary.${level}.desc` as any, locale)}</span>
+                                            </button>
+                                        ))}
+
+                                        <div className="px-3 py-2 mt-1 text-xs font-semibold text-[var(--text-muted)] border-t border-[var(--border-subtle)]">
+                                            {t('app.lang.output', locale)}
+                                        </div>
+                                        <div className="px-1 pb-1">
+                                            <SearchableLanguageSelect />
+                                        </div>
+
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
 
                     {/* 3. Style Selector */}
@@ -512,10 +705,40 @@ export default function NotesEditor() {
                 </div>
             </div>
 
+            {/* Stats Bar (Dashboard Header) */}
+            {!showTranscript && (
+                <div
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 py-2.5 border-b"
+                    style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
+                >
+                    {/* Left: Stats */}
+                    <div className="flex items-center gap-4 text-[10px] overflow-x-auto" style={{ color: 'var(--text-muted)' }}>
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Type size={11} />
+                            {stats.words.toLocaleString()} {t('app.editor.words' as any, locale)}
+                        </span>
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Clock size={11} />
+                            ~{stats.readingTime} {t('app.editor.reading' as any, locale)}
+                        </span>
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                            <Hash size={11} />
+                            {stats.sections} {t('app.editor.sections' as any, locale)}
+                        </span>
+                        <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                            style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
+                        >
+                            {t(`app.summary.${summaryLevel}` as any, locale)}
+                        </span>
+                    </div>
+                </div>
+            )}
+
             {/* Content */}
             <div className="flex-1 flex min-h-0 relative">
                 {showTranscript ? (
-                    <div className="absolute inset-0 p-4 sm:p-5 overflow-auto custom-scrollbar">
+                    <div className="absolute inset-0 p-4 sm:p-5 pb-28 sm:pb-24 overflow-auto custom-scrollbar">
                         <pre className="whitespace-pre-wrap font-mono text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {transcription}
                         </pre>
@@ -560,35 +783,116 @@ export default function NotesEditor() {
                     </>
                 )}
 
-                {/* Footer con botón Nuevo Documento - Barra sólida */}
-                {!showTranscript && (
-                    <div
-                        className="absolute bottom-0 left-0 right-0 border-t"
-                        style={{
-                            background: 'var(--bg-secondary)',
-                            borderColor: 'var(--border-subtle)'
-                        }}
-                    >
-                        <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-3">
-                            <button
-                                onClick={reset}
-                                className="w-full max-w-2xl mx-auto flex items-center justify-center gap-2.5 px-4 py-2.5 sm:py-3 rounded-lg font-semibold transition-all duration-200 group relative overflow-hidden"
-                                style={{
-                                    background: 'var(--accent)',
-                                    color: '#fff',
-                                }}
-                            >
-                                {/* Hover shine effect */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                {/* Footer con botón Nuevo Documento y Audio Player - Barra sólida SIEMPRE VISIBLE */}
+                <div
+                    className="absolute bottom-0 left-0 right-0 border-t"
+                    style={{
+                        background: 'var(--bg-secondary)',
+                        borderColor: 'var(--border-subtle)'
+                    }}
+                >
+                    <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}>
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+                            
+                            {/* Audio Player (50%) */}
+                            <div className="w-full sm:w-1/2">
+                                {file && audioUrl ? (
+                                    <div 
+                                        className="flex items-center gap-3 px-4 py-2.5 rounded-lg border w-full"
+                                        style={{
+                                            background: 'var(--bg-tertiary)',
+                                            borderColor: 'var(--border-subtle)'
+                                        }}
+                                    >
+                                        <button
+                                            onClick={toggleAudio}
+                                            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors shadow-sm"
+                                            style={{ background: 'var(--accent)', color: '#fff' }}
+                                        >
+                                            {audioPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" style={{ marginLeft: 2 }} />}
+                                        </button>
 
-                                <RotateCcw size={18} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
-                                <span className="relative z-10 text-sm sm:text-base">
-                                    {locale === 'es' ? 'Nuevo Documento' : 'New Document'}
-                                </span>
-                            </button>
+                                        <div className="flex-1 flex flex-col justify-center min-w-[100px] sm:min-w-0">
+                                            <div
+                                                className="h-1.5 rounded-full cursor-pointer relative overflow-hidden"
+                                                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-subtle)' }}
+                                                onClick={seekAudio}
+                                            >
+                                                <div
+                                                    ref={progressFillRef}
+                                                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-150"
+                                                    style={{ width: `${audioDuration > 0 && audioDuration !== Infinity ? (audioTime / audioDuration) * 100 : 0}%`, background: 'var(--accent)' }}
+                                                />
+                                            </div>
+                                            <div className="flex justify-between mt-1.5 text-[9.5px] font-mono font-medium tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                                                <span ref={timeDisplayRef}>{formatAudioTime(audioTime)}</span>
+                                                <span>{audioDuration === Infinity ? 'En vivo' : formatAudioTime(audioDuration)}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Volume Slider visible on all devices */}
+                                        <div className="flex items-center gap-1.5 flex-shrink-0 group ml-2">
+                                            <button onClick={() => {
+                                                const newV = volume > 0 ? 0 : 1;
+                                                setVolume(newV);
+                                                if (editorAudioRef.current) editorAudioRef.current.volume = newV;
+                                            }}>
+                                                {volume === 0 ? <VolumeX size={14} style={{ color: 'var(--text-muted)' }} /> : <Volume2 size={14} style={{ color: 'var(--text-muted)' }} />}
+                                            </button>
+                                            <input
+                                                type="range"
+                                                min="0" max="1" step="0.01"
+                                                value={volume}
+                                                onChange={(e) => {
+                                                    const v = parseFloat(e.target.value);
+                                                    setVolume(v);
+                                                    if (editorAudioRef.current) editorAudioRef.current.volume = v;
+                                                }}
+                                                className="w-12 h-1 rounded-full appearance-none bg-[var(--bg-primary)] border border-[var(--border-subtle)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)] cursor-pointer"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="h-[54px] rounded-lg border border-dashed flex items-center justify-center text-xs text-[var(--text-muted)] w-full" style={{ borderColor: 'var(--border-subtle)' }}>
+                                        No audio available
+                                    </div>
+                                )}
+                            </div>
+
+                            <audio
+                                ref={editorAudioRef}
+                                src={audioUrl || undefined}
+                                className="hidden"
+                                onLoadedMetadata={handleAudioLoadedMetadata}
+                                onEnded={() => {
+                                    setAudioPlaying(false);
+                                    setAudioTime(0);
+                                }}
+                            />
+
+                            {/* New Document Button (50%) */}
+                            <div className="w-full sm:w-1/2">
+                                <button
+                                    onClick={reset}
+                                    className="w-full flex items-center justify-center gap-2.5 px-4 h-[54px] rounded-lg font-semibold transition-all duration-200 group relative overflow-hidden shadow-sm"
+                                    style={{
+                                        background: 'var(--accent)',
+                                        color: '#fff',
+                                    }}
+                                >
+                                    {/* Hover shine effect */}
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+
+                                    <RotateCcw size={16} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
+                                    <span className="relative z-10 text-sm">
+                                        {locale === 'es' ? 'Nuevo Documento' : 'New Document'}
+                                    </span>
+                                </button>
+                            </div>
+
                         </div>
                     </div>
-                )}
+                </div>
             </div>
         </div>
     );

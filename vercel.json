@@ -5,7 +5,7 @@
             "headers": [
                 {
                     "key": "Content-Security-Policy",
-                    "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://va.vercel-scripts.com https://unpkg.com; connect-src 'self' blob: https://api.groq.com https://generativelanguage.googleapis.com https://unpkg.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;"
+                    "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://va.vercel-scripts.com https://unpkg.com; connect-src 'self' blob: https://api.groq.com https://generativelanguage.googleapis.com https://unpkg.com https://va.vercel-scripts.com https://vitals.vercel-insights.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;"
                 },
                 {
                     "key": "X-Frame-Options",
@@ -21,7 +21,7 @@
                 },
                 {
                     "key": "Cross-Origin-Embedder-Policy",
-                    "value": "require-corp"
+                    "value": "credentialless"
                 },
                 {
                     "key": "Cross-Origin-Opener-Policy",
@@ -34,4 +34,4 @@
             ]
         }
     ]
-}
+}

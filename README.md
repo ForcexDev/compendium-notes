@@ -29,37 +29,41 @@ The web application runs entirely in your browser using **client-side processing
 ## ✨ Features
 
 ### Core Capabilities
-- **Dual AI Engine** - Choose between **Groq** (Extreme Speed) and **Gemini** (Massive Context).
-- **Audio Recorder** - Built-in recording functionality directly from your browser.
-- **Privacy-First Architecture** - Keys and data stored exclusively in `localStorage`. Direct Browser-to-API communication.
-- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini Flash 2.0** for lightning-fast audio-to-text.
-- **AI-Powered Organization** - Automatically extracts summaries, concepts, and structured notes using **Llama 4 Scout** or **Gemini**.
+- **100% Free & Unlimited** - No paywalls, no subscriptions. Bring your own free API keys and process as many hours as you need.
+- **Dual AI Engine** - Choose between **Groq** (Extreme Speed) and **Gemini** (Massive Context & Multimodal).
+- **Smart Audio Chunking** - Automatically splits long audio files (e.g., 2+ hour lectures) into optimal segments using FFmpeg, avoiding API timeouts and enabling infinite transcription length for Gemini.
+- **Privacy-First Architecture** - Keys and data stored exclusively in `localStorage`. Direct Browser-to-API communication. Your data never touches our servers.
+- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini Flash 2.0** for lightning-fast, highly accurate audio-to-text.
+- **AI-Powered Organization** - Automatically extracts topics, key concepts, and generates structured **Markdown** notes using intelligent prompting.
+- **Premium Export** - Download your structured notes directly into **Minimalist**, **Academic**, or **Cornell** PDF styles.
+- **Built-in Audio Player** - Review your recordings while reading or editing the generated notes, with synchronized progress tracking.
 - **Dark & Light Mode** - Full support for both themes with automatic system preference detection.
-- **Premium PDF Styles** - Export in **Minimalist**, **Academic**, or **Cornell** styles.
-- **Modern UX** - Floating Action Buttons, real-time focus indicators, and sleek mobile-responsive design.
 - **Multi-Language** - Native support for **English** and **Spanish**.
 
 ### Technology Stack
 - **Frontend**: Astro (Static Shell) + React (Interactive App)
 - **Styling**: Vanilla CSS + Tailwind + Framer Motion
-- **State Management**: Zustand
+- **State Management**: Zustand + Dexie.js (IndexedDB for persistent sessions)
+- **Audio Processing**: Web Audio API + `@ffmpeg/ffmpeg` (WebAssembly)
 - **AI Integration**: Direct REST API calls to Groq & Google AI Studio
 
 ---
 
-## ⚡ Model Benchmarks
+## ⚡ Architecture Pipeline
 
 Real-world processing performance for a 1-hour lecture (~50MB audio):
 
-| Provider | Model | Speed | Cost (Free Tier) | Best For |
-|----------|-------|-------|------------------|----------|
-| **Groq** | Whisper v3 + Llama 4 Scout | ~15-30 seconds | Free | Extreme Speed |
-| **Gemini** | Flash 2.0 + Pro 2.5| ~30-45 seconds | Free | Long Context (+1h) |
+| Provider | Model | Speed | Cost | Best For |
+|----------|-------|-------|------|----------|
+| **Groq** | Whisper v3 + Llama 4 Scout | ~15-30 seconds | **Free** | Fast drafts & short meetings |
+| **Gemini** | Flash 2.0 + Pro 2.5| ~30-45 seconds | **Free** | Long seminars, extreme accuracy |
 
-**Key Insights:**
-- **Groq** (via Whisper) is unparalleled in speed for files under 100MB.
-- **Gemini** offers a **1M+ token context window**, perfect for long seminars or multiple files.
-- The **Cornell** template now uses premium geometric fonts (**Outfit**) for superior legibility in the preview.
+**The Pipeline Flow:**
+1. **Audio Compression**: Large files are automatically compressed locally using Web Audio API down to 16kHz mono (reducing 100MB files to ~10MB).
+2. **Intelligent Chunking**: If using Gemini and the audio exceeds 45 minutes, it is seamlessly split into 30-minute chunks using FFmpeg WebAssembly.
+3. **Parallel Transcription**: The chunks are sent directly from your browser to the AI provider.
+4. **Markdown Organization**: The raw transcript is passed back to the AI to extract a title, format into Markdown sections, and summarize.
+5. **Interactive Editor**: Review the transcript, edit the markdown, and export to PDF.
 
 ---
 
@@ -69,9 +73,11 @@ Real-world processing performance for a 1-hour lecture (~50MB audio):
 graph TD
     User["User Browser"]
     subgraph "Client Side (Your Device)"
-        Upload["Audio File"]
+        Upload["Audio/Video File"]
         Store["LocalStorage (Keys)"]
         App["Compendium Notes App"]
+        AudioAPI["Web Audio API (Compression)"]
+        FFmpeg["FFmpeg WebAssembly (Chunking)"]
     end
     
     subgraph "External AI APIs"
@@ -83,13 +89,19 @@ graph TD
     Upload --> App
     Store --> App
     
-    App -- "Direct HTTPS (No Backend)" --> Groq
-    App -- "Direct HTTPS (No Backend)" --> Gemini
+    App --> AudioAPI
+    AudioAPI -- "If > 45 mins & Gemini" --> FFmpeg
+    AudioAPI -- "Otherwise" --> APIs
+    FFmpeg -- "Multiple Parallel Chunks" --> Gemini
+    
+    APIs{"API Router"}
+    APIs -- "Direct HTTPS" --> Groq
+    APIs -- "Direct HTTPS" --> Gemini
     
     Groq -- "Transcription & Notes" --> App
     Gemini -- "Transcription & Notes" --> App
     
-    App --> Result["Formatted PDF/Notes"]
+    App --> Result["Formatted PDF/Notes/Markdown"]
 ```
 
 ---

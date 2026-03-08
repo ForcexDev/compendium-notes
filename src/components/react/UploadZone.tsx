@@ -5,6 +5,7 @@ import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, C
 import { t } from '../../lib/i18n';
 
 import AudioRecorder from './AudioRecorder';
+import SearchableLanguageSelect from './SearchableLanguageSelect';
 
 // FORMATOS SOPORTADOS - Cobertura completa móvil + PC + grabadoras
 const ACCEPTED = [
@@ -37,7 +38,7 @@ const MAX_SIZE_GROQ = 150 * 1024 * 1024; // 150MB para Groq (que luego comprime)
 const MAX_SIZE_GEMINI = 500 * 1024 * 1024; // 500MB para Gemini
 
 export default function UploadZone() {
-    const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState } = useAppStore();
+    const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState, summaryLevel, setSummaryLevel } = useAppStore();
     const [isDragging, setIsDragging] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [showHint, setShowHint] = useState(false);
@@ -247,12 +248,56 @@ export default function UploadZone() {
 
             </div>
 
+            {/* Output Language Selector */}
+            {file && processingState === 'idle' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4"
+                >
+                    <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
+                        {t('app.lang.output', locale)}
+                    </label>
+                    <SearchableLanguageSelect />
+                </motion.div>
+            )}
+
+            {/* Summary Level Selector */}
+            {file && processingState === 'idle' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4"
+                >
+                    <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
+                        {t('app.summary.level', locale)}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {(['short', 'medium', 'long'] as const).map((level) => (
+                            <button
+                                key={level}
+                                onClick={() => setSummaryLevel(level)}
+                                className="py-2.5 px-3 rounded-lg text-xs font-medium transition-all text-left"
+                                style={{
+                                    background: summaryLevel === level ? 'var(--accent-subtle)' : 'var(--bg-primary)',
+                                    border: `1px solid ${summaryLevel === level ? 'var(--accent)' : 'var(--border-default)'}`,
+                                    color: summaryLevel === level ? 'var(--accent)' : 'var(--text-muted)',
+                                }}
+                            >
+                                <span className="block font-semibold">{t(`app.summary.${level}` as any, locale)}</span>
+                                <span className="block text-[10px] opacity-70 mt-0.5">{t(`app.summary.${level}.desc` as any, locale)}</span>
+                            </button>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+
             {/* Start button */}
             {file && processingState === 'idle' && (
                 <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-6"
+                    className="mt-4"
                 >
                     <button
                         onClick={handleStart}

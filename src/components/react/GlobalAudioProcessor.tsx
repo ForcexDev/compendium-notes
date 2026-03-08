@@ -6,6 +6,41 @@ import { t } from '../../lib/i18n';
 import { transcribeWithGemini, organizeNotesWithGemini, transcribeWithGeminiChunked, DURATION_THRESHOLD_CHUNKING } from '../../lib/gemini';
 import { updateProjectState, db } from '../../lib/db';
 
+const playNotificationSound = () => {
+    try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        
+        const playTone = (freq: number, startTime: number, duration: number) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, startTime);
+            
+            gain.gain.setValueAtTime(0, startTime);
+            gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+            
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+        };
+
+        const now = ctx.currentTime;
+        // Simple success chime: C5 -> E5
+        playTone(523.25, now, 0.4);
+        playTone(659.25, now + 0.15, 0.6);
+        
+        setTimeout(() => ctx.close(), 1000);
+    } catch (e) {
+        console.error("Audio notification err:", e);
+    }
+};
+
 export default function GlobalAudioProcessor() {
     const {
         file, apiKey, geminiKey, provider, locale,
@@ -14,7 +49,7 @@ export default function GlobalAudioProcessor() {
         setTranscription, setStep, setError,
         setOrganizedNotes, setAiStep, setTitle,
         currentProjectId, restoreSession,
-        activeKey
+        activeKey, summaryLevel, outputLanguage
     } = useAppStore();
 
     // Restaurar sesión al montar
@@ -232,7 +267,7 @@ export default function GlobalAudioProcessor() {
                         });
                     }
                 }
-            });
+            }, summaryLevel, outputLanguage);
 
             const organizationTime = ((Date.now() - organizationStart) / 1000).toFixed(1);
             console.log(`[Gemini Flow] ✅ Organization (${organizationTime}s)`);
@@ -271,6 +306,7 @@ export default function GlobalAudioProcessor() {
                 });
             }
 
+            playNotificationSound();
             setStep('editor');
 
             const totalTime = ((Date.now() - flowStartTime) / 1000).toFixed(1);
@@ -389,7 +425,7 @@ export default function GlobalAudioProcessor() {
                         });
                     }
                 }
-            });
+            }, summaryLevel, outputLanguage);
 
             if (isCancelled()) return;
 
@@ -419,6 +455,7 @@ export default function GlobalAudioProcessor() {
                 });
             }
 
+            playNotificationSound();
             setStep('editor');
             console.log('[Groq Flow] ✅ Complete');
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

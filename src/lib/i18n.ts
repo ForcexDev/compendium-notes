@@ -6,14 +6,18 @@ export const translations = {
     'nav.config': { es: 'Configuración', en: 'Settings' },
 
     // Hero
+    'hero.badge.nocloud': { es: 'Sin servidores', en: 'No cloud' },
+    'hero.badge.opensource': { es: 'Open Source', en: 'Open Source' },
+    'hero.title.prefix': { es: 'Convierte tus', en: 'Turn your' },
+    'hero.title.suffix': { es: 'en apuntes perfectos', en: 'into perfect notes' },
     'hero.title.line1': { es: 'Convierte clases', en: 'Turn lectures' },
     'hero.title.line2': { es: 'en conocimiento', en: 'into knowledge' },
     'hero.subtitle': {
-        es: 'Transcribe audio y video con IA. Organiza apuntes automáticamente. Descarga PDFs profesionales.',
-        en: 'Transcribe audio and video with AI. Organize notes automatically. Download professional PDFs.',
+        es: 'Transcribe audio y video con IA totalmente gratis y sin límites. Convierte clases o reuniones en apuntes estructurados en Markdown y descárgalos en PDF listo para estudiar.',
+        en: 'Transcribe audio and video with AI completely free and without limits. Turn lectures or meetings into structured Markdown notes and download them as study-ready PDFs.',
     },
-    'hero.cta.start': { es: 'Comenzar', en: 'Get Started' },
-    'hero.cta.how': { es: 'Cómo funciona', en: 'How it works' },
+    'hero.cta.start': { es: 'Comenzar gratis', en: 'Start for free' },
+    'hero.cta.how': { es: 'Ver cómo funciona', en: 'See how it works' },
 
     // Features
     'features.label': { es: 'Características', en: 'Features' },
@@ -36,6 +40,21 @@ export const translations = {
     'features.export.desc': {
         es: 'Obtén documentos PDF limpios, paginados y con formato académico listos para imprimir o estudiar.',
         en: 'Get clean, paginated, and academically formatted PDF documents ready to print or study.',
+    },
+    'features.privacy.title': { es: 'Privacidad Total', en: 'Total Privacy' },
+    'features.privacy.desc': {
+        es: 'Tus datos nunca pasan por nuestros servidores. Todo se procesa en tu navegador con tu propia API Key.',
+        en: 'Your data never goes through our servers. Everything is processed in your browser with your own API Key.',
+    },
+    'features.multiformat.title': { es: 'Multi-formato', en: 'Multi-format' },
+    'features.multiformat.desc': {
+        es: 'Soporta MP3, MP4, WAV, M4A, WEBM, FLAC, MOV y más. Audio y video sin límites.',
+        en: 'Supports MP3, MP4, WAV, M4A, WEBM, FLAC, MOV and more. Audio and video without limits.',
+    },
+    'features.speed.title': { es: 'Ultra-rápido', en: 'Ultra-fast' },
+    'features.speed.desc': {
+        es: 'Procesamiento en segundos gracias a infraestructura de IA de última generación.',
+        en: 'Processing in seconds thanks to state-of-the-art AI infrastructure.',
     },
 
     // How it works
@@ -105,6 +124,8 @@ export const translations = {
     'pricing.cta.key': { es: 'Obtener API Key', en: 'Get API Key' },
 
     // Footer
+    'footer.tagline': { es: 'Transforma cualquier audio o video en documentos estructurados con inteligencia artificial.', en: 'Transform any audio or video into structured documents with artificial intelligence.' },
+    'footer.madewith': { es: 'Hecho con', en: 'Made with' },
     'footer.product': { es: 'Producto', en: 'Product' },
     'footer.resources': { es: 'Recursos', en: 'Resources' },
     'footer.legal': { es: 'Legal', en: 'Legal' },
@@ -144,6 +165,35 @@ export const translations = {
     'app.record.stop': { es: 'Detener', en: 'Stop' },
     'app.record.recording': { es: 'Grabando', en: 'Recording' },
     'app.record.cancel': { es: 'Cancelar', en: 'Cancel' },
+    'app.record.paused': { es: 'En pausa', en: 'Paused' },
+    'app.record.resume': { es: 'Reanudar', en: 'Resume' },
+    'app.record.review': { es: 'Revisar grabación', en: 'Review recording' },
+    'app.record.use': { es: 'Usar grabación', en: 'Use recording' },
+    'app.record.discard': { es: 'Descartar', en: 'Discard' },
+    'app.record.denied': { es: 'Permiso de micrófono denegado', en: 'Microphone permission denied' },
+    'app.record.retry': { es: 'Reintentar', en: 'Retry' },
+    'app.record.download': { es: 'Descargar', en: 'Download' },
+    'app.summary.level': { es: 'Nivel de resumen', en: 'Summary level' },
+    'app.summary.short': { es: 'Corto', en: 'Short' },
+    'app.summary.medium': { es: 'Mediano', en: 'Medium' },
+    'app.summary.long': { es: 'Detallado', en: 'Detailed' },
+    'app.summary.short.desc': { es: 'Resumen rápido y conceptos clave', en: 'Quick summary and key concepts' },
+    'app.summary.medium.desc': { es: 'Resumen balanceado con secciones', en: 'Balanced summary with sections' },
+    'app.summary.long.desc': { es: 'Documento exhaustivo y completo', en: 'Comprehensive and exhaustive document' },
+    'app.lang.output': { es: 'Idioma de salida', en: 'Output language' },
+    'app.lang.auto': { es: 'Auto (Original)', en: 'Auto (Original)' },
+    'app.lang.auto.desc': { es: 'Mismo idioma que el audio', en: 'Same as audio language' },
+    'app.lang.es': { es: 'Español', en: 'Spanish' },
+    'app.lang.en': { es: 'Inglés', en: 'English' },
+    'app.lang.fr': { es: 'Francés', en: 'French' },
+    'app.lang.de': { es: 'Alemán', en: 'German' },
+    'app.lang.it': { es: 'Italiano', en: 'Italian' },
+    'app.lang.pt': { es: 'Portugués', en: 'Portuguese' },
+    'app.editor.resummarize': { es: 'Re-resumir', en: 'Re-summarize' },
+    'app.editor.resummarizing': { es: 'Re-resumiendo...', en: 'Re-summarizing...' },
+    'app.editor.words': { es: 'palabras', en: 'words' },
+    'app.editor.reading': { es: 'min lectura', en: 'min read' },
+    'app.editor.sections': { es: 'secciones', en: 'sections' },
     'app.transcribing': { es: 'Transcribiendo...', en: 'Transcribing...' },
     'app.transcribing.desc': {
         es: 'Procesando audio rápido con Whisper + Llama 4 Scout',

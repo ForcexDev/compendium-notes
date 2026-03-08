@@ -5,12 +5,15 @@ import { useAppStore } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import { validateGroqKey } from '../../lib/groq';
 import { validateGeminiKey } from '../../lib/gemini';
+import SearchableLanguageSelect from './SearchableLanguageSelect';
 
 export default function ConfigModal() {
     const {
         apiKey, setApiKey, geminiKey, setGeminiKey,
         provider, setProvider, setConfigOpen,
-        pdfStyle, setPdfStyle, locale, processingState
+        pdfStyle, setPdfStyle, locale, processingState,
+        summaryLevel, setSummaryLevel,
+        outputLanguage, setOutputLanguage
     } = useAppStore();
 
     const isProcessing = processingState !== 'idle' && processingState !== 'done' && processingState !== 'error';
@@ -296,6 +299,41 @@ export default function ConfigModal() {
                                     }}
                                 >
                                     {t(`app.style.${style}` as any, locale)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Output Language Selector */}
+                    <div>
+                        <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
+                            {t('app.lang.output', locale)}
+                        </label>
+                        <div className="w-full">
+                            <SearchableLanguageSelect disabled={isProcessing} />
+                        </div>
+                    </div>
+
+                    {/* Summary Level Selector */}
+                    <div>
+                        <label className="text-xs font-medium mb-2 block" style={{ color: 'var(--text-secondary)' }}>
+                            {t('app.summary.level', locale)}
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {(['short', 'medium', 'long'] as const).map((level) => (
+                                <button
+                                    key={level}
+                                    disabled={isProcessing}
+                                    onClick={() => setSummaryLevel(level)}
+                                    className={`py-2.5 px-3 rounded-lg text-xs font-medium transition-all text-left ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    style={{
+                                        background: summaryLevel === level ? 'var(--accent-subtle)' : 'var(--bg-primary)',
+                                        border: `1px solid ${summaryLevel === level && !isProcessing ? 'var(--accent)' : 'var(--border-default)'}`,
+                                        color: summaryLevel === level ? 'var(--accent)' : 'var(--text-muted)',
+                                    }}
+                                >
+                                    <span className="block font-semibold">{t(`app.summary.${level}` as any, locale)}</span>
+                                    <span className="block text-[10px] opacity-70 mt-0.5">{t(`app.summary.${level}.desc` as any, locale)}</span>
                                 </button>
                             ))}
                         </div>

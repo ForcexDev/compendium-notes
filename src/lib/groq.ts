@@ -1,4 +1,5 @@
 const GROQ_API_URL = 'https://api.groq.com/openai/v1';
+import { getLanguageNameEn } from './languages';
 
 /**
  * Transcribe a single audio file (must be ≤ 25MB)
@@ -22,7 +23,6 @@ async function transcribeSingleFile(
     formData.append('file', file);
     formData.append('model', 'whisper-large-v3-turbo');
     formData.append('response_format', 'verbose_json');
-    formData.append('language', 'es');
     formData.append('timestamp_granularities[]', 'segment');
 
     try {
@@ -110,10 +110,14 @@ export async function transcribeAudio(
 const MAX_CHARS_PER_CHUNK = 28000;
 const DELAY_BETWEEN_CHUNKS_MS = 6000; // avoid rate limits
 
+import type { SummaryLevel } from './store';
+
 export async function organizeNotes(
     transcription: string,
     apiKey: string,
-    onStep?: (step: number) => void
+    onStep?: (step: number) => void,
+    summaryLevel: SummaryLevel = 'short',
+    outputLanguage: string = 'auto'
 ): Promise<string> {
     if (!apiKey) throw new Error('API Key no configurada');
     if (!transcription) throw new Error('No hay transcripción para organizar');
@@ -125,7 +129,7 @@ export async function organizeNotes(
 
     if (chunks.length === 1) {
         // Single chunk — full format
-        const result = await callLlama(chunks[0], apiKey, 'full');
+        const result = await callLlama(chunks[0], apiKey, 'full', undefined, summaryLevel, outputLanguage);
         onStep?.(4);
         if (!result) throw new Error('La IA no generó contenido. Intenta de nuevo.');
         onStep?.(5);
@@ -143,7 +147,9 @@ export async function organizeNotes(
             chunks[i],
             apiKey,
             isFirst ? 'first' : 'continuation',
-            partLabel
+            partLabel,
+            summaryLevel,
+            outputLanguage
         );
         if (result) partResults.push(result);
 
@@ -182,62 +188,176 @@ async function callLlama(
     apiKey: string,
     mode: 'full' | 'first' | 'continuation',
     partLabel?: string,
+    summaryLevel: SummaryLevel = 'short',
+    outputLanguage: string = 'auto'
 ): Promise<string | null> {
-    const systemPrompt = mode === 'full' || mode === 'first'
-        ? `Eres un asistente experto en crear apuntes académicos estructurados. Tu tarea es organizar una transcripción de audio en apuntes profesionales y claros en el idioma original de la transcripción.
+    const langInstructions = outputLanguage === 'auto'
+        ? 'Write ALL notes strictly in the EXACT SAME LANGUAGE as the original audio. Do NOT translate anything.'
+        : `TRANSLATE the Title, Summary, Key Concepts, and Definitions strictly into ${getLanguageNameEn(outputLanguage)}.`;
 
-FORMATO DE SALIDA (Markdown):
+    const translationRule = outputLanguage === 'auto'
+        ? '- Keep everything in the original spoken language of the audio.'
+        : `- CRITICAL: Translate ONLY the Title, Summary, Concepts, and Definitions into ${getLanguageNameEn(outputLanguage).toUpperCase()}. The content blocks under ### [MM:SS] MUST REMAIN IN THE ORIGINAL SPOKEN LANGUAGE and must NOT be translated.`;
 
-## Título
-[Título breve y descriptivo del tema principal]
+    // SHORT prompt
+    const shortPrompt = `You are an expert assistant specialized in creating structured academic notes. Your task is to organize an audio transcript into clear and professional notes ${langInstructions}
 
-## Resumen
-- [Punto 1: máximo 2 líneas]
-- [Punto 2: máximo 2 líneas]
-- [Punto 3: máximo 2 líneas]
+OUTPUT FORMAT (Markdown):
+
+## Title
+[Brief and descriptive title of the main topic]
+
+## Summary
+- [Point 1: max 2 lines]
+- [Point 2: max 2 lines]
+- [Point 3: max 2 lines]
 (3-5 bullets)
 
-## Conceptos Clave
-**Término 1**: Breve explicación
-**Término 2**: Breve explicación
+## Key Concepts
+**Term 1**: Brief explanation
+**Term 2**: Brief explanation
 
-## Definiciones
-> **[Concepto]**: [Definición textual del audio]
+## Definitions
+> **[Concept]**: [Textual definition from the audio]
 
-## Contenido
+## Content
 
-### [00:00] Introducción
-[Transcripción de esta sección organizada y limpia]
+### [00:00] Introduction
+[Translated and organized main points of this section]
 
-### [MM:SS] [Título de sección]
-[Transcripción de esta sección organizada y limpia]
+### [MM:SS] [Section Title]
+[Translated and organized main points of this section]
 
-INSTRUCCIONES IMPORTANTES:
-- Responde en el mismo idioma que la transcripción.
-- Mantén el lenguaje académico pero claro
-- Resalta términos técnicos con **bold**
-- Los timestamps deben estar en formato [MM:SS]
-- Divide en secciones lógicas cada 3-5 minutos aproximadamente
-- Corrige errores gramaticales de la transcripción
-- Elimina muletillas y repeticiones innecesarias
-- Si no hay definiciones claras en el audio, omite la sección de Definiciones`
-        : `Eres un asistente experto en crear apuntes académicos. Esta es una CONTINUACIÓN de una transcripción larga. Organiza SOLO esta parte en secciones del contenido (no repitas el Resumen ni Conceptos Clave).
+IMPORTANT INSTRUCTIONS:
+- Maintain an academic but clear language
+- Highlight technical terms with **bold**
+- Timestamps must be in [MM:SS] format
+- Divide into logical sections approximately every 3-5 minutes
+- Correct grammatical errors from the transcription
+- Remove filler words and unnecessary repetitions
+- If there are no clear definitions in the audio, omit the Definitions section
+${translationRule}`;
 
-FORMATO DE SALIDA (Markdown):
-### [MM:SS] [Título de sección]
-[Contenido organizado]
+    // MEDIUM prompt
+    const mediumPrompt = `You are an expert assistant specialized in creating structured and detailed academic notes. Your task is to organize an audio transcript into professional notes ${langInstructions}
 
-INSTRUCCIONES:
-- Mantén el lenguaje académico pero claro
-- Resalta términos técnicos con **bold**
-- Usa timestamps [MM:SS]
-- Corrige errores gramaticales
-- Elimina muletillas
-- Mantén el idioma original de la transcripción`;
+OUTPUT FORMAT (Markdown):
+
+# [Descriptive Title of the Topic]
+
+## Summary
+[3-5 paragraphs synthesizing the complete content. Each paragraph 3-4 lines.]
+
+## Key Concepts
+- **Concept 1**: 2-3 line explanation
+- **Concept 2**: 2-3 line explanation
+(8-12 concepts)
+
+## Definitions
+> **[Term]**: [Complete definition based on the audio]
+
+## Content Development
+
+### [MM:SS] [Section Title]
+[2-4 paragraphs of translated and organized content developing this section]
+
+### [MM:SS] [Next section]
+[2-4 paragraphs with examples and details]
+
+## Review Questions
+1. **Q:** [Conceptual question]
+   **A:** [2-3 line answer]
+(5-10 questions)
+
+INSTRUCTIONS:
+- Academic but clear language
+- Highlight technical terms with **bold**
+- Timestamps in [MM:SS] format
+- Correct grammatical errors
+- Remove filler words
+- Develop each section with sufficient detail
+${translationRule}`;
+
+    // LONG prompt
+    const longPrompt = `You are an expert assistant specialized in creating EXHAUSTIVE and professional academic notes ${langInstructions}
+
+CRITICAL OBJECTIVE:
+Transform the transcript into an academic document SO COMPLETE that it eliminates the need to listen to the audio again.
+
+EXHAUSTIVENESS RULE:
+- DO NOT mention the word exhaustive or any similar word in the content.
+- USE ALL AVAILABLE TOKENS
+- DO NOT summarize too much - DEVELOP each concept COMPLETELY
+- If the transcript is long, the notes MUST be proportionally long
+- Each section must have MULTIPLE dense paragraphs
+
+STRUCTURE:
+
+# [Professional Descriptive Title]
+
+## 1. Summary
+[3-6 DENSE paragraphs. Each paragraph 4-6 lines minimum.]
+
+## 2. Key Concepts
+- **Concept**: Detailed explanation
+(8-15 concepts)
+
+## 3. Content Development
+### [MM:SS] [Subtitle]
+[4-8 paragraphs of translated and organized content per section: context, theoretical explanation, examples, implications]
+
+## 4. Definitions and Terminology
+> **Term**: Complete definition
+
+## 5. Examples and Case Studies
+[All mentioned examples, fully developed]
+
+## 6. Connections and Synthesis
+[3-5 paragraphs connecting concepts]
+
+## 7. Review Questions
+1. **Q:** [Deep question]
+   **A:** [3-5 line answer]
+(10-20 questions)
+
+INSTRUCTIONS:
+- NO emojis
+- Clean and professional Markdown
+- Highlight terms with **bold**
+- Timestamps [MM:SS]
+- Correct grammatical errors
+- Remove filler words
+- GENERATE AS MUCH CONTENT AS POSSIBLE
+${translationRule}`;
+
+    const continuationPrompt = `You are an expert assistant specialized in creating academic notes. This is a CONTINUATION of a long transcript. Organize ONLY this part into content sections (do not repeat Synthesis or Key Concepts) ${langInstructions}
+
+OUTPUT FORMAT (Markdown):
+### [MM:SS] [Section Title]
+[Organized content]
+
+INSTRUCTIONS:
+- Maintain an academic but clear language
+- Highlight technical terms with **bold**
+- Use timestamps [MM:SS]
+- Correct grammatical errors
+- Remove filler words
+${translationRule}`;
+
+    let systemPrompt: string;
+    if (mode === 'continuation') {
+        systemPrompt = continuationPrompt;
+    } else {
+        switch (summaryLevel) {
+            case 'medium': systemPrompt = mediumPrompt; break;
+            case 'long': systemPrompt = longPrompt; break;
+            default: systemPrompt = shortPrompt; break;
+        }
+    }
 
     const userContent = partLabel
-        ? `${partLabel} — AUDIO TRANSCRITO:\n\n${transcriptionChunk}\n\nOrganiza esta parte de la transcripción.`
-        : `AUDIO TRANSCRITO:\n\n${transcriptionChunk}\n\nOrganiza esta transcripción en apuntes estructurados siguiendo el formato indicado.`;
+        ? `${partLabel} — TRANSCRIBED AUDIO:\n\n${transcriptionChunk}\n\nOrganize this part of the transcription.`
+        : `TRANSCRIBED AUDIO:\n\n${transcriptionChunk}\n\nOrganize this transcription into structured notes following the indicated format.`;
 
     const response = await fetch(`${GROQ_API_URL}/chat/completions`, {
         method: 'POST',

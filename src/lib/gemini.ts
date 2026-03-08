@@ -1,6 +1,8 @@
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_UPLOAD_URL = 'https://generativelanguage.googleapis.com/upload/v1beta';
 
+import { getLanguageNameEn } from './languages';
+
 // Constantes de Modelos
 export const GEMINI_FLASH_MODEL = 'gemini-2.0-flash';
 export const GEMINI_FLASH_LONG_CONTEXT = 'gemini-2.5-flash';
@@ -647,17 +649,24 @@ export async function transcribeWithGeminiChunked(
  * Organizar transcripción en apuntes (PROMPT MEJORADO)
  * Usa 2.5 Pro para máxima calidad
  */
+import type { SummaryLevel } from './store';
+
 export async function organizeNotesWithGemini(
     transcription: string,
     apiKey: string,
-    onStep?: (step: number) => void
+    onStep?: (step: number) => void,
+    summaryLevel: SummaryLevel = 'short',
+    outputLanguage: string = 'auto'
 ): Promise<{ notes: string, tokensUsed: number }> {
-    if (!apiKey) throw new Error('Gemini API Key no configurada');
-    if (!transcription) throw new Error('No hay transcripción para organizar');
+    if (!apiKey) throw new Error('Gemini API Key missing');
+    if (!transcription) throw new Error('Missing transcription to organize');
 
     onStep?.(1);
 
-    const maxOutputTokens = getOrganizationTokens(transcription.length);
+    // Adjust tokens based on summary level
+    const levelTokenMultiplier = summaryLevel === 'short' ? 0.3 : summaryLevel === 'medium' ? 0.6 : 1;
+    const baseTokens = getOrganizationTokens(transcription.length);
+    const maxOutputTokens = Math.max(4096, Math.round(baseTokens * levelTokenMultiplier));
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('[Gemini Organize] 📚 Starting organization');
@@ -665,104 +674,201 @@ export async function organizeNotesWithGemini(
     console.log(`[Gemini Organize] Max tokens: ${maxOutputTokens}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // PROMPT MEJORADO: Fuerza exhaustividad
-    const prompt = `Eres un asistente experto en crear apuntes académicos EXHAUSTIVOS y profesionales en el idioma original de la transcripción.
+    const langInstructions = outputLanguage === 'auto'
+        ? 'Write ALL notes strictly in the EXACT SAME LANGUAGE as the original audio. Do NOT translate anything.'
+        : `TRANSLATE the Title, Summary, Key Concepts, and Definitions strictly into ${getLanguageNameEn(outputLanguage)}.`;
 
-FORMATO DE SALIDA OBLIGATORIO:
-Tu respuesta DEBE comenzar INMEDIATAMENTE con # seguido del título.
-NO incluyas frases introductorias.
-La primera línea de tu respuesta DEBE ser el título en formato Markdown.
+    const translationRule = outputLanguage === 'auto'
+        ? '- Keep everything in the original spoken language of the audio.'
+        : `- CRITICAL: Translate ONLY the Title, Summary, Concepts, and Definitions into ${getLanguageNameEn(outputLanguage).toUpperCase()}. The content blocks under ### [MM:SS] MUST REMAIN IN THE ORIGINAL SPOKEN LANGUAGE and must NOT be translated.`;
 
-OBJETIVO CRÍTICO:
-Transformar la transcripción en un documento académico TAN COMPLETO que elimine la necesidad de volver a escuchar el audio.
+    // SHORT prompt
+    const shortPrompt = `You are an expert assistant specialized in creating structured academic notes. Organize the transcript into concise notes ${langInstructions}
 
-REGLA DE EXHAUSTIVIDAD:
-- NO menciones la palabra exhaustivo o ninguna palabra similar en el contenido.
-- USA TODOS LOS TOKENS DISPONIBLES
-- NO resumas en exceso - DESARROLLA cada concepto COMPLETAMENTE
-- Si la transcripción es larga, los apuntes DEBEN ser proporcionalmente largos
-- Cada sección debe tener MÚLTIPLES párrafos densos
-- Incluye TODO el contenido relevante, no solo lo más importante
+Your response MUST begin IMMEDIATELY with # followed by the title.
 
-REGLAS DE FORMATO:
-1. NO uses emojis
-2. Usa Markdown limpio y profesional
-3. Corrige errores de transcripción oral
-4. Si hay código mencionado, usa bloques de código
-5. Usa **negritas** para términos técnicos importantes
+STRUCTURE:
 
-ESTRUCTURA DE SALIDA:
+# [Descriptive Title]
 
-# [Título Profesional Descriptivo del Tema]
+## Summary
+- [3-5 key points, max 2 lines each]
 
-## 1. Resumen
+## Key Concepts
+**Term 1**: Brief explanation
+**Term 2**: Brief explanation
 
-[3-6 párrafos DENSOS que sinteticen la esencia completa del contenido. No escatimes en detalles. Cada párrafo debe tener 4-6 líneas mínimo.]
+## Definitions
+> **[Concept]**: [Definition from audio]
 
-## 2. Conceptos Clave
+## Content
+### [MM:SS] [Section Title]
+[Translated and organized main points of this section]
 
-[Lista de 8-15 conceptos principales, con una línea explicativa de cada uno]
-- **Concepto 1**: Breve explicación
-- **Concepto 2**: Breve explicación
-- ...
-
-## 3. Desarrollo del Contenido
-
-[ESTA ES LA SECCIÓN MÁS IMPORTANTE - Debe ser MUY extensa]
-
-### Subtítulo Descriptivo de Primera Sección
-
-[Múltiples párrafos (4-8) desarrollando COMPLETAMENTE esta sección:
-- Contexto e introducción
-- Explicación teórica detallada
-- Ejemplos mencionados
-- Implicaciones y aplicaciones
-- Conexiones con otros conceptos]
-
-### Siguiente Subtítulo
-
-[Continuar con el mismo nivel de detalle exhaustivo...]
-
-[Repite este patrón para TODAS las secciones principales del audio]
-
-## 4. Definiciones y Terminología
-
-> **Término 1**: Definición completa y precisa basada en el contexto.
-
-> **Término 2**: Definición técnica detallada.
-
-[Incluye TODAS las definiciones mencionadas]
-
-## 5. Ejemplos, Casos Prácticos y Aplicaciones
-
-[Desarrolla TODOS los ejemplos mencionados con detalle completo. No los resumas, explícalos completamente.]
-
-## 6. Conexiones y Síntesis
-
-[Explica cómo se relacionan los conceptos entre sí. Esta sección debe tener 3-5 párrafos.]
-
-## 7. Preguntas de Repaso
-
-[Genera 10-20 preguntas según la extensión del contenido]
-
-1. **P: [Pregunta conceptual profunda]**
-   **R:** [Respuesta completa de 3-5 líneas]
-
-2. **P: [Pregunta de aplicación práctica]**
-   **R:** [Respuesta con ejemplo detallado]
-
-[Continúa hasta cubrir todos los conceptos importantes]
+INSTRUCTIONS:
+- NO emojis
+- Clean Markdown
+- Highlight terms in **bold**
+- Timestamps [MM:SS]
+- Fix grammatical errors
+- Remove filler words
+${translationRule}
 
 ---
 
-TRANSCRIPCIÓN:
+TRANSCRIPTION:
 ${transcription}
 
-IMPORTANTE: Genera apuntes EXTENSOS y EXHAUSTIVOS. USA TODOS LOS TOKENS DISPONIBLES. Más detalles = mejor documento.
-Tu respuesta DEBE comenzar INMEDIATAMENTE con # seguido del título.
-NO menciones la palabra exhaustivo o ninguna palabra similar en el contenido.
+Your response MUST begin IMMEDIATELY with # followed by the title.`;
 
-Genera los apuntes ahora en el idioma original de la transcripción.`;
+    // MEDIUM prompt
+    const mediumPrompt = `You are an expert assistant specialized in creating detailed academic notes. Organize the transcript into a comprehensive document ${langInstructions}
+
+Your response MUST begin IMMEDIATELY with # followed by the title.
+
+STRUCTURE:
+
+# [Descriptive Title of the Topic]
+
+## Summary
+[3-5 paragraphs summarizing the content. Each paragraph 3-4 lines.]
+
+## Key Concepts
+- **Concept**: 2-3 line explanation
+(8-12 concepts)
+
+## Definitions
+> **[Term]**: [Complete definition]
+
+## Content Development
+### [MM:SS] [Section Title]
+[2-4 paragraphs of translated and organized content per section with examples and details]
+
+## Review Questions
+1. **Q:** [Question]
+   **A:** [2-3 line answer]
+(5-10 questions)
+
+INSTRUCTIONS:
+- NO emojis
+- Clean and professional Markdown
+- Highlight terms in **bold**
+- Timestamps [MM:SS]
+- Fix grammatical errors
+- Remove filler words
+${translationRule}
+
+---
+
+TRANSCRIPTION:
+${transcription}
+
+Your response MUST begin IMMEDIATELY with # followed by the title.`;
+
+    // LONG prompt (current exhaustive - unchanged format, translated to English)
+    const longPrompt = `You are an expert assistant specialized in creating EXHAUSTIVE and professional academic notes ${langInstructions}
+
+MANDATORY OUTPUT FORMAT:
+Your response MUST begin IMMEDIATELY with # followed by the title.
+Do NOT include introductory phrases.
+The first line of your response MUST be the title in Markdown format.
+
+CRITICAL OBJECTIVE:
+Transform the transcript into an academic document SO COMPLETE that it eliminates the need to listen to the audio again.
+
+EXHAUSTIVENESS RULE:
+- DO NOT mention the word exhaustive or any similar word in the content.
+- USE ALL AVAILABLE TOKENS
+- DO NOT summarize too much - DEVELOP each concept COMPLETELY
+- If the transcript is long, the notes MUST be proportionally long
+- Each section must have MULTIPLE dense paragraphs
+- Include ALL relevant content, not just the most important
+
+FORMATTING RULES:
+1. NO emojis
+2. Use clean and professional Markdown
+3. Correct oral transcription errors
+4. If code is mentioned, use code blocks
+5. Use **bold** for important technical terms
+
+OUTPUT STRUCTURE:
+
+# [Professional Descriptive Title of the Topic]
+
+## 1. Summary
+
+[3-6 DENSE paragraphs synthesizing the complete essence of the content. Do not skimp on details. Each paragraph must have a minimum of 4-6 lines.]
+
+## 2. Key Concepts
+
+[List of 8-15 main concepts, with an explanatory line for each]
+- **Concept 1**: Brief explanation
+- **Concept 2**: Brief explanation
+- ...
+
+## 3. Content Development
+
+[THIS IS THE MOST IMPORTANT SECTION - Must be VERY extensive]
+
+### Descriptive Subtitle of First Section
+
+[Multiple paragraphs (4-8) COMPLETELY developing this section:
+- Context and introduction
+- Detailed theoretical explanation
+- Examples mentioned
+- Implications and applications
+- Connections with other concepts]
+
+### Next Subtitle
+
+[Continue with the same level of exhaustive detail...]
+
+[Repeat this pattern for ALL main sections of the audio]
+
+## 4. Definitions and Terminology
+
+> **Term 1**: Complete and accurate definition based on context.
+
+> **Term 2**: Detailed technical definition.
+
+[Include ALL definitions mentioned]
+
+## 5. Examples, Case Studies and Applications
+
+[Develop ALL mentioned examples with complete detail. Do not summarize them, explain them completely.]
+
+## 6. Connections and Synthesis
+
+[Explain how concepts relate to each other. This section should have 3-5 paragraphs.]
+
+## 7. Review Questions
+
+[Generate 10-20 questions depending on content length]
+
+1. **Q: [Deep conceptual question]**
+   **A:** [Complete 3-5 line answer]
+
+2. **Q: [Practical application question]**
+   **A:** [Answer with detailed example]
+
+[Continue until all important concepts are covered]
+
+---
+
+TRANSCRIPTION:
+${transcription}
+
+IMPORTANT: Generate EXTENSIVE and EXHAUSTIVE notes. USE ALL AVAILABLE TOKENS. More details = better document.
+Your response MUST begin IMMEDIATELY with # followed by the title.
+DO NOT mention the word exhaustive or any similar word in the content.
+${translationRule}`;
+
+    let prompt: string;
+    switch (summaryLevel) {
+        case 'short': prompt = shortPrompt; break;
+        case 'medium': prompt = mediumPrompt; break;
+        default: prompt = longPrompt; break;
+    }
 
     onStep?.(2);
 

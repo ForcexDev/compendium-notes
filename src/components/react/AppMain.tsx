@@ -163,44 +163,41 @@ export default function AppMain() {
 
     return (
         <div className="min-h-screen flex flex-col pt-14" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            <main className="flex-1 flex items-center justify-center p-4 sm:p-6" style={{ minHeight: '75vh' }}>
-                <div className={`w-full flex flex-col items-center ${step !== 'editor' ? 'vertical-offset-container' : ''}`}>
-                    <style>{`
-                        .vertical-offset-container {
-                            transition: margin-top 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-                            margin-top: ${MOBILE_VERTICAL_OFFSET};
-                            will-change: margin-top;
-                        }
-                        @media (min-width: 1024px) {
-                            .vertical-offset-container {
-                                margin-top: ${PC_VERTICAL_OFFSET};
-                            }
-                        }
-                    `}</style>
-
-                    <AnimatePresence mode="wait">
-                        {step === 'upload' && (
-                            <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-2xl">
+            <main className="flex-1 relative w-full overflow-hidden" style={{ minHeight: 'calc(100vh - 3.5rem)' }}>
+                <AnimatePresence mode="wait">
+                    {step === 'upload' && (
+                        <motion.div key="upload" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} 
+                            className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center custom-scrollbar overflow-y-auto overflow-x-hidden">
+                            <div className="w-full max-w-2xl vertical-offset-active">
                                 <UploadZone />
-                            </motion.div>
-                        )}
-                        {step === 'transcribing' && (
-                            <motion.div key="transcribing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-lg">
+                            </div>
+                        </motion.div>
+                    )}
+                    {step === 'transcribing' && (
+                        <motion.div key="transcribing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} 
+                            className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center custom-scrollbar overflow-y-auto overflow-x-hidden">
+                            <div className="w-full max-w-lg vertical-offset-active">
                                 <TranscriptionProgress />
-                            </motion.div>
-                        )}
-                        {step === 'ai-processing' && (
-                            <motion.div key="ai" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3 }} className="w-full max-w-lg">
+                            </div>
+                        </motion.div>
+                    )}
+                    {step === 'ai-processing' && (
+                        <motion.div key="ai" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3 }} 
+                            className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center custom-scrollbar overflow-y-auto overflow-x-hidden">
+                            <div className="w-full max-w-lg vertical-offset-active">
                                 <AIProcessing />
-                            </motion.div>
-                        )}
-                        {step === 'editor' && (
-                            <motion.div key="editor" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} className="w-full max-w-6xl h-[calc(100vh-7rem)]">
+                            </div>
+                        </motion.div>
+                    )}
+                    {step === 'editor' && (
+                        <motion.div key="editor" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} 
+                            className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-start custom-scrollbar overflow-y-auto overflow-x-hidden vertical-offset-none">
+                            <div className="w-full max-w-6xl h-full min-h-[calc(100vh-7rem)] flex flex-col">
                                 <NotesEditor />
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </main>
 
             {/* Error toast */}
