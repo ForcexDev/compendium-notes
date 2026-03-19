@@ -115,23 +115,21 @@ export default function NotesEditor() {
 
     // Derived title logic
     const derivedTitle = useMemo(() => {
-        // 1. Buscamos el título explícito en el contenido (Formatos # Título ...)
+        // 1. Título del store — GlobalAudioProcessor lo extrae del # h1 del LLM.
+        //    Prioridad máxima: evita que "## 1. Summary" / "## 1. Zusammenfassung"
+        //    sean confundidas con el título cuando el idioma no es español.
+        if (title) return title;
+
+        // 2. Formato legacy Groq: ## Título \n <texto>
         const explicitMatch = editedNotes.match(/^## T[íi]tulo\s*\n+([^\n]+)/m);
         if (explicitMatch) return explicitMatch[1].trim().replace(/\*\*/g, '');
 
-        // 2. Buscamos el primer H1 (#) o H2 (##)
-        const firstLineMatch = editedNotes.match(/^\s*#{1,2}\s+([^\n]+)/);
-        if (firstLineMatch) {
-            const candidate = firstLineMatch[1].trim();
-            // Evitamos títulos genéricos de estructura
-            const reserved = ['Resumen', 'Conceptos', 'Definiciones', 'Contenido', 'Introducción'];
-            if (!reserved.some(r => candidate.includes(r))) {
-                return candidate.replace(/\*\*/g, '');
-            }
-        }
+        // 3. Primer # h1 real en el contenido (no ## secciones)
+        const h1Match = editedNotes.match(/^\s*#\s+([^\n]+)/m);
+        if (h1Match) return h1Match[1].trim().replace(/\*\*/g, '');
 
-        // 3. Fallback al título guardado o nombre de archivo
-        return title || file?.name?.replace(/\.[^.]+$/, '') || 'Untitled Note';
+        // 4. Fallback al nombre de archivo
+        return file?.name?.replace(/\.[^.]+$/, '') || 'Untitled Note';
     }, [title, editedNotes, file]);
 
     const handleCopy = async () => {
@@ -140,9 +138,9 @@ export default function NotesEditor() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleDownload = () => {
+    const handleDownload = async () => {
         setDownloading(true);
-        setTimeout(() => {
+        try {
             let finalContent = showTranscript ? transcription : editedNotes;
 
             if (!title && !showTranscript) {
@@ -160,7 +158,7 @@ export default function NotesEditor() {
                 finalContent = cleaned.trim();
             }
 
-            generatePdf({
+            await generatePdf({
                 title: derivedTitle,
                 date: new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US'),
                 duration: '',
@@ -168,10 +166,13 @@ export default function NotesEditor() {
                 style: pdfStyle,
                 locale: locale,
             });
-            setDownloading(false);
             setDownloaded(true);
             setTimeout(() => setDownloaded(false), 3000);
-        }, 300);
+        } catch (err) {
+            console.error('PDF generation error:', err);
+        } finally {
+            setDownloading(false);
+        }
     };
 
     // Estilos de preview mejorados - escala aumentada para mejor legibilidad
@@ -662,7 +663,7 @@ export default function NotesEditor() {
                     <div className="w-px h-4 mx-1 hidden sm:block" style={{ background: 'var(--border-subtle)' }}></div>
 
                     <button
-                        onClick={() => {
+                        onClick={async () => {
                             let finalContent = showTranscript ? transcription : editedNotes;
                             if (!title && !showTranscript) {
                                 finalContent = finalContent.replace(/^## T[íi]tulo\s*\n+[^\n]+\n*/m, '').trim();
@@ -673,7 +674,7 @@ export default function NotesEditor() {
                                     }
                                 }
                             }
-                            const url = generatePdf({
+                            const url = await generatePdf({
                                 title: derivedTitle,
                                 date: new Date().toLocaleDateString(locale === 'es' ? 'es-CL' : 'en-US'),
                                 duration: '',
@@ -793,11 +794,11 @@ export default function NotesEditor() {
                 >
                     <div className="max-w-7xl mx-auto px-3 py-2.5 sm:px-6 sm:py-3" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 0.75rem)' }}>
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
-                            
+
                             {/* Audio Player (50%) */}
                             <div className="w-full sm:w-1/2">
                                 {file && audioUrl ? (
-                                    <div 
+                                    <div
                                         className="flex items-center gap-3 px-4 py-2.5 rounded-lg border w-full"
                                         style={{
                                             background: 'var(--bg-tertiary)',
@@ -829,7 +830,7 @@ export default function NotesEditor() {
                                                 <span>{audioDuration === Infinity ? 'En vivo' : formatAudioTime(audioDuration)}</span>
                                             </div>
                                         </div>
-                                        
+
                                         {/* Volume Slider visible on all devices */}
                                         <div className="flex items-center gap-1.5 flex-shrink-0 group ml-2">
                                             <button onClick={() => {

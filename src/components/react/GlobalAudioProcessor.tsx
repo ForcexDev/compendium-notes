@@ -11,21 +11,21 @@ const playNotificationSound = () => {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
-        
+
         const playTone = (freq: number, startTime: number, duration: number) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
-            
+
             osc.connect(gain);
             gain.connect(ctx.destination);
-            
+
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, startTime);
-            
+
             gain.gain.setValueAtTime(0, startTime);
             gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
             gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
-            
+
             osc.start(startTime);
             osc.stop(startTime + duration);
         };
@@ -34,7 +34,7 @@ const playNotificationSound = () => {
         // Simple success chime: C5 -> E5
         playTone(523.25, now, 0.4);
         playTone(659.25, now + 0.15, 0.6);
-        
+
         setTimeout(() => ctx.close(), 1000);
     } catch (e) {
         console.error("Audio notification err:", e);
@@ -276,13 +276,22 @@ export default function GlobalAudioProcessor() {
 
             const notes = organizationResult.notes;
 
-            // Extraer título
+            // Extraer título — busca primero el # h1, si el modelo lo omitió usa el primer ## h2
             let cleanNotes = notes;
             const titleMatch = notes.match(/^#\s+(.+)/m);
             if (titleMatch) {
                 const extractedTitle = titleMatch[1].trim();
                 setTitle(extractedTitle);
                 cleanNotes = notes.replace(/^#\s+.+\n+/, '').trim();
+            } else {
+                // Fallback: el modelo saltó el # título — usar el primer ## encabezado
+                const h2Match = notes.match(/^##\s+(.+)/m);
+                if (h2Match) {
+                    const fallbackTitle = h2Match[1].trim().replace(/^\d+\.\s*/, ''); // quitar "1. " si existe
+                    console.warn('[Gemini Flow] ⚠️  No # title found, using first ## as title:', fallbackTitle);
+                    setTitle(fallbackTitle);
+                }
+                // cleanNotes queda igual — no hay nada que remover
             }
 
             setOrganizedNotes(cleanNotes);
@@ -429,13 +438,27 @@ export default function GlobalAudioProcessor() {
 
             if (isCancelled()) return;
 
-            // Extraer título
+            // Extraer título — busca primero el formato Groq (## Título), luego # h1, luego ## h2 como fallback
             let cleanNotes = notes;
             const titleMatch = notes.match(/^## Título\s*\n(.+)/m);
             if (titleMatch) {
                 const extractedTitle = titleMatch[1].trim().replace(/\*\*/g, '');
                 setTitle(extractedTitle);
                 cleanNotes = notes.replace(/^## Título\s*\n.+\n*/m, '').trim();
+            } else {
+                // Fallback: buscar # h1 (por si Groq cambia formato) o primer ## h2
+                const h1Match = notes.match(/^#\s+(.+)/m);
+                if (h1Match) {
+                    setTitle(h1Match[1].trim());
+                    cleanNotes = notes.replace(/^#\s+.+\n+/, '').trim();
+                } else {
+                    const h2Match = notes.match(/^##\s+(.+)/m);
+                    if (h2Match) {
+                        const fallbackTitle = h2Match[1].trim().replace(/^\d+\.\s*/, '');
+                        console.warn('[Groq Flow] ⚠️  No title heading found, using first ## as title:', fallbackTitle);
+                        setTitle(fallbackTitle);
+                    }
+                }
             }
 
             setOrganizedNotes(cleanNotes);
