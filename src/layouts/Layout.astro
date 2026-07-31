@@ -15,7 +15,7 @@ export interface Props {
 
 const {
   title,
-  description = 'Transcribe audio and video to structured markdown notes completely free with AI. Export to professional PDF. Best tool for students and meetings.',
+  description = 'Transcribe audio and video with AI completely free and without limits. Turn lectures or meetings into structured Markdown notes and download them as study-ready PDFs.',
   lang = 'en',
 } = Astro.props;
 ---
@@ -28,18 +28,21 @@ const {
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://va.vercel-scripts.com https://unpkg.com; connect-src 'self' blob: https://api.groq.com https://generativelanguage.googleapis.com https://unpkg.com https://va.vercel-scripts.com https://vitals.vercel-insights.com; img-src 'self' blob: data: https:; media-src 'self' blob: data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;" />
     
     <!-- Primary Meta Tags -->
-    <title>{title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title}</title>
-    <meta name="title" content={title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title} />
+    <title>{title === 'CompendiumNotes' ? `${title} | Free Unlimited AI Transcription to Markdown & PDF` : title}</title>
+    <meta name="title" content={title === 'CompendiumNotes' ? `${title} | Free Unlimited AI Transcription to Markdown & PDF` : title} />
     <meta name="description" content={description} />
-    <meta name="keywords" content="transcribe audio, ai transcription free, speech to text markdown, summarize lectures, audio to pdf, meeting notes ai, whisper transcription, gemini flash, free transcription tool, compendium notes" />
+    <meta name="keywords" content="transcribe audio and video, free unlimited AI transcription, lectures to notes, meetings to notes, markdown notes generator, study-ready PDF notes, speech to text markdown, compendium notes" />
     <meta name="theme-color" content="#09090b" />
     <meta name="generator" content={Astro.generator} />
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content={new URL(Astro.url.pathname, Astro.site)} />
-    <meta property="og:title" content={title === 'CompendiumNotes' ? `${title} | Free AI Audio Transcription & Markdown Notes` : title} />
+    <meta property="og:title" content={title === 'CompendiumNotes' ? `${title} | Free Unlimited AI Transcription to Markdown & PDF` : title} />
     <meta property="og:description" content={description} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title === 'CompendiumNotes' ? `${title} | Free Unlimited AI Transcription to Markdown & PDF` : title} />
+    <meta name="twitter:description" content={description} />
     
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />

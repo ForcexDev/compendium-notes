@@ -64,8 +64,8 @@ export default function TranscriptionProgress() {
                 ? (provider === 'gemini' ? 'Transcribiendo con Gemini...' : 'Transcribiendo...')
                 : (provider === 'gemini' ? 'Transcribing with Gemini...' : 'Transcribing...'),
             desc: locale === 'es'
-                ? (provider === 'gemini' ? 'Procesando con Gemini Pro 2.5' : 'Procesando con Whisper V3 y Llama 4 scout')
-                : (provider === 'gemini' ? 'Processing with Gemini Pro 2.5' : 'Processing with Whisper V3 and Llama 4 scout'),
+                ? (provider === 'gemini' ? 'Procesando con Gemini 3.1 Flash Lite' : 'Procesando con Whisper V3 y Llama 3')
+                : (provider === 'gemini' ? 'Processing with Gemini 3.1 Flash Lite' : 'Processing with Whisper V3 and Llama 3'),
             icon: AudioLines,
         },
     };
@@ -208,7 +208,7 @@ export default function TranscriptionProgress() {
                 <div className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md" style={{
                     background: 'var(--accent-subtle)', border: '1px solid var(--accent)', color: 'var(--accent)',
                 }}>
-                    {provider === 'gemini' ? 'Gemini Pro 2.5' : 'Llama 4 Scout'}
+                    {provider === 'gemini' ? 'Gemini 3.1 Flash Lite' : 'Llama 3'}
                 </div>
                 {file && (
                     <div className="inline-flex items-center gap-2 text-xs px-3 py-1.5 rounded-md" style={{

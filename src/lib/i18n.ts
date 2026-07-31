@@ -28,8 +28,8 @@ export const translations = {
     },
     'features.transcribe.title': { es: 'Transcripción Dual', en: 'Dual Transcription' },
     'features.transcribe.desc': {
-        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento multimodal de Gemini Flash 2.0 + Pro 2.5.',
-        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini Flash 2.0 + Pro 2.5 multimodal reasoning.',
+        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento del ecosistema Gemini con 3.1 Flash Lite y 3 Flash.',
+        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini ecosystem reasoning with 3.1 Flash Lite and 3 Flash.',
     },
     'features.organize.title': { es: 'Organización Inteligente', en: 'Intelligent Organization' },
     'features.organize.desc': {
@@ -102,7 +102,7 @@ export const translations = {
     'pricing.gemini.title': { es: 'Potencia', en: 'Power' },
     'pricing.gemini.desc': { es: 'Para contenido complejo', en: 'For complex content' },
     'pricing.gemini.price': { es: '$0', en: '$0' },
-    'pricing.gemini.f1': { es: 'Modelo Gemini Flash 2.0 + Pro 2.5', en: 'Gemini Flash 2.0 + Pro 2.5 Model' },
+    'pricing.gemini.f1': { es: 'Modelo Gemini 3.1 Flash Lite + 3 Flash', en: 'Gemini 3.1 Flash Lite + 3 Flash Models' },
     'pricing.gemini.f2': { es: 'Contexto masivo (+45min)', en: 'Massive context (+45min)' },
     'pricing.gemini.f3': { es: 'Razonamiento multimodal', en: 'Multimodal reasoning' },
     'pricing.gemini.btn': { es: 'Obtener Key de Gemini', en: 'Get Gemini Key' },
@@ -137,7 +137,11 @@ export const translations = {
     'footer.github': { es: 'GitHub', en: 'GitHub' },
     'footer.privacy': { es: 'Privacidad', en: 'Privacy' },
     'footer.terms': { es: 'Términos', en: 'Terms' },
-    'footer.copyright': { es: 'CompendiumNotes. Open Source.', en: 'CompendiumNotes. Open Source.' },
+    'footer.ai_disclaimer': {
+        es: 'La IA puede cometer errores. Verifica la información importante.',
+        en: 'AI can make mistakes. Please verify important information.',
+    },
+    'footer.copyright': { es: 'Compendium. Todos los derechos reservados.', en: 'Compendium. All rights reserved.' },
 
     // Hero Preview
     'hero.preview.filename': { es: 'clase_calculo.mp3', en: 'calculus_class.mp3' },
@@ -196,13 +200,13 @@ export const translations = {
     'app.editor.sections': { es: 'secciones', en: 'sections' },
     'app.transcribing': { es: 'Transcribiendo...', en: 'Transcribing...' },
     'app.transcribing.desc': {
-        es: 'Procesando audio rápido con Whisper + Llama 4 Scout',
-        en: 'Fast audio processing with Whisper + Llama 4 Scout',
+        es: 'Procesando audio rápido con Whisper + Llama 3',
+        en: 'Fast audio processing with Whisper + Llama 3',
     },
     'app.ai.title': { es: 'Organizando con IA', en: 'Organizing with AI' },
     'app.ai.desc': {
-        es: 'Llama 4 Scout está creando tus apuntes',
-        en: 'Llama 4 Scout is creating your notes',
+        es: 'Llama 3 está creando tus apuntes',
+        en: 'Llama 3 is creating your notes',
     },
     'app.ai.step1': { es: 'Analizando contenido...', en: 'Analyzing content...' },
     'app.ai.step2': { es: 'Extrayendo conceptos clave...', en: 'Extracting key concepts...' },
@@ -262,8 +266,8 @@ export const translations = {
         en: 'Please be patient, duration depends on your device power and file size.',
     },
     'app.processing.patience.gemini': {
-        es: 'Gemini Pro está trabajando para ti. En archivos de larga duración, la transcripción puede demorar hasta 5 minutos.',
-        en: 'Gemini Pro is working for you. For long files, transcription can take up to 5 minutes.',
+        es: 'La transcripción y análisis están en curso. En archivos de larga duración, este proceso puede demorar unos minutos.',
+        en: 'Transcription and analysis are in progress. For long files, this process can take a few minutes.',
     },
     'app.processing.cancel': { es: 'Cancelar transcripción', en: 'Cancel transcription' },
     'app.processing.stuck_btn': { es: 'Limpiar proceso atascado', en: 'Clear stuck process' },
@@ -271,11 +275,11 @@ export const translations = {
 
     // Privacy
     'privacy.title': { es: 'Política de Privacidad', en: 'Privacy Policy' },
-    'privacy.date': { es: 'Última actualización: 13 de febrero de 2026', en: 'Last updated: February 13, 2026' },
+    'privacy.date': { es: 'Última actualización: 23 de marzo de 2026', en: 'Last updated: March 23, 2026' },
     'privacy.intro.title': { es: '1. Introducción', en: '1. Introduction' },
     'privacy.intro.desc': {
-        es: 'CompendiumNotes ("nosotros", "nuestro") respeta su privacidad. Esta Política de Privacidad explica cómo recopilamos, usamos y protegemos su información cuando utiliza nuestra aplicación. Su privacidad es nuestra prioridad: operamos bajo un modelo <strong>Bring Your Own Key (BYOK)</strong>, lo que significa que sus datos más sensibles son procesados directamente por los proveedores de IA (Groq/Google) utilizando sus propias credenciales.',
-        en: 'CompendiumNotes ("we", "our") respects your privacy. This Privacy Policy explains how we collect, use, and protect your information when you use our application. Your privacy is our priority: we operate under a <strong>Bring Your Own Key (BYOK)</strong> model, meaning your most sensitive data is processed directly by AI providers (Groq/Google) using your own credentials.'
+        es: 'Compendium ("nosotros", "nuestro") respeta profundamente la privacidad de nuestros usuarios y entendemos la alta sensibilidad de la información procesada. Esta Política de Privacidad describe nuestras prácticas sobre la recopilación y manejo de información. Operamos bajo un principio estricto de cliente-servidor descentralizado, a menudo referido como <strong>Bring Your Own Key (BYOK)</strong>. Sus audios, textos y claves API nunca son almacenados en nuestros servidores, siendo delegados enteramente a funciones ejecutadas en su propio dispositivo o a través de conductos seguros directos a los proveedores de inteligencia artificial establecidos (Google o Groq) utilizando sus propios medios de acceso.',
+        en: 'Compendium ("we", "our") deeply respects our user\'s privacy and we understand the high sensitivity of the processed information. This Privacy Policy describes our practices regarding information collection and handling. We operate under a strict decentralized client-server principle, often referred to as <strong>Bring Your Own Key (BYOK)</strong>. Your audios, texts, and API keys are never stored on our servers, being entirely delegated to functions running on your own device or through direct secure conduits to established AI providers (Google or Groq) using your own access means.'
     },
     'privacy.collection.title': { es: '2. Recopilación de Datos', en: '2. Data Collection' },
     'privacy.collection.desc': {
@@ -287,8 +291,8 @@ export const translations = {
     'privacy.collection.l3': { es: 'Transcripciones y Notas: Se generan y muestran en su navegador. Usted es responsable de guardarlas.', en: 'Transcripts and Notes: Generated and displayed in your browser. You are responsible for saving them.' },
     'privacy.third.title': { es: '3. Uso de Servicios de Terceros', en: '3. Third-Party Services' },
     'privacy.third.desc': {
-        es: 'Utilizamos servicios de terceros para el procesamiento de IA. Al usar CompendiumNotes, usted también está sujeto a las políticas de privacidad de:',
-        en: 'We use third-party services for AI processing. By using CompendiumNotes, you are also subject to the privacy policies of:'
+        es: 'Al interactuar con nuestros canales de procesamiento, su entorno local establece comunicaciones cifradas asíncronas con plataformas de terceros para el análisis avanzado. Dado esto, la retención de dichos intercambios está circunscrita a las propias políticas corporativas de:',
+        en: 'By interacting with our processing pipelines, your local environment establishes asynchronous encrypted communications with third-party platforms for advanced analysis. Thus, retention of such exchanges is bound to the corporate policies of:'
     },
     'privacy.changes.title': { es: '4. Cambios en esta Política', en: '4. Changes to this Policy' },
     'privacy.changes.desc': {
@@ -304,30 +308,30 @@ export const translations = {
 
     // Terms
     'terms.title': { es: 'Términos de Servicio', en: 'Terms of Service' },
-    'terms.date': { es: 'Última actualización: 13 de febrero de 2026', en: 'Last updated: February 13, 2026' },
+    'terms.date': { es: 'Última actualización: 23 de marzo de 2026', en: 'Last updated: March 23, 2026' },
     'terms.acceptance.title': { es: '1. Aceptación de los Términos', en: '1. Acceptance of Terms' },
     'terms.acceptance.desc': {
-        es: 'Al acceder y utilizar CompendiumNotes, usted acepta estar sujeto a estos Términos de Servicio. Si no está de acuerdo con alguna parte de estos términos, no debe utilizar nuestro servicio.',
-        en: 'By accessing and using CompendiumNotes, you agree to be bound by these Terms of Service. If you do not agree to any part of these terms, you must not use our service.'
+        es: 'Al acceder e interactuar con el ecosistema de Compendium, usted consiente sujetarse a los presentes lineamientos legales. La disconformidad parcial o total con este acuerdo innhabilita de manera irrevocable el uso lícito de la plataforma.',
+        en: 'By accessing and interacting with the Compendium ecosystem, you consent to be bound by these legal guidelines. Partial or total disagreement with this agreement irrevocably disables the lawful use of the platform.'
     },
     'terms.desc.title': { es: '2. Descripción del Servicio', en: '2. Service Description' },
     'terms.desc.desc': {
-        es: 'CompendiumNotes es una herramienta que permite a los usuarios transcribir y organizar notas de audio utilizando inteligencia artificial. El servicio se proporciona "tal cual" y "según disponibilidad".',
-        en: 'CompendiumNotes is a tool that allows users to transcribe and organize audio notes using artificial intelligence. The service is provided "as is" and "as available".'
+        es: 'La plataforma consiste en una conjunción de procesadores de audio y herramientas de arquitectura de texto impulsadas por sistemas deterministas multimodales (Inteligencia Artificial). Suministramos las interfaces de acceso "tal cual" (AS IS), sin garantías tácitas de rendimiento ni disponibilidad perpetua.',
+        en: 'The platform consists of a conjunction of audio processors and text architecture tools driven by multimodal deterministic systems (Artificial Intelligence). We provide access interfaces "AS IS", without implied warranties of performance or perpetual availability.'
     },
     'terms.resp.title': { es: '3. Responsabilidades del Usuario', en: '3. User Responsibilities' },
-    'terms.resp.l1': { es: 'Usted es responsable de mantener la confidencialidad de sus API Keys (Groq/Gemini).', en: 'You are responsible for maintaining the confidentiality of your API Keys (Groq/Gemini).' },
-    'terms.resp.l2': { es: 'Usted acepta no utilizar el servicio para fines ilegales o no autorizados.', en: 'You agree not to use the service for illegal or unauthorized purposes.' },
-    'terms.resp.l3': { es: 'Usted garantiza que tiene los derechos necesarios sobre el contenido de audio que sube para su procesamiento.', en: 'You warrant that you have the necessary rights to the audio content you upload for processing.' },
-    'terms.costs.title': { es: '4. Costos y Tarifas', en: '4. Costs and Fees' },
+    'terms.resp.l1': { es: 'Acata salvaguardar la custodia sobre toda credencial (API key) ingresada. Nosotros no poseemos registro de sus accesos.', en: 'Comply with safeguarding custody over any entered credential (API key). We possess no logs of your accesses.' },
+    'terms.resp.l2': { es: 'Declina la posibilidad de utilizar nuestras herramientas de transposición en actividades ilícitas que vulneren propiedad intelectual ajena.', en: 'Decline the possibility of using our transposition tools in illicit activities that violate collateral intellectual property.' },
+    'terms.resp.l3': { es: 'Reafirma que actúa en derecho de propiedad, licencia, o consentimiento expreso al auditar cualquier fonograma subido a la aplicación.', en: 'Reaffirm acting in right of property, license, or express consent when auditing any phonogram uploaded to the application.' },
+    'terms.costs.title': { es: '4. Transacciones, Costos y Tarifas', en: '4. Transactions, Costs and Fees' },
     'terms.costs.desc': {
-        es: 'CompendiumNotes es una aplicación de código abierto y de uso gratuito. Sin embargo, el uso de los modelos de IA de terceros (Groq, Google Gemini) puede estar sujeto a los límites y tarifas de sus respectivos proveedores. Usted es responsable de cualquier costo asociado con el uso de sus propias API Keys.',
-        en: 'CompendiumNotes is an open-source, free-to-use application. However, the use of third-party AI models (Groq, Google Gemini) may be subject to limits and fees from their respective providers. You are responsible for any costs associated with the use of your own API Keys.'
+        es: 'Compendium es una interfaz que distribuye las operaciones localmente careciendo de cuotas internas. Sin embargo, su conexión puente con motores de origen corporativo (Google Gemini, Groq) se circunscribe a los términos comerciales emitidos por tales. El usuario asume plena responsabilidad por topes de uso, saldos adeudados o cualquier cargo facturado por su proveedor de API respectivo.',
+        en: 'Compendium is an interface that distributes operations locally, lacking internal quotas. Nevertheless, its bridge connection with corporate origin engines (Google Gemini, Groq) is subject to the commercial terms issued by them. The user assumes full liability for usage caps, due balances or any charged bill invoiced by their respective API provider.'
     },
     'terms.limit.title': { es: '5. Limitación de Responsabilidad', en: '5. Limitation of Liability' },
     'terms.limit.desc': {
-        es: 'En ningún caso CompendiumNotes, sus desarrolladores o colaboradores serán responsables de ningún daño directo, indirecto, incidental, especial, consecuente o punitivo que surja de su uso del servicio.',
-        en: 'In no event shall CompendiumNotes, its developers, or contributors be liable for any direct, indirect, incidental, special, consequential, or punitive damages arising from your use of the service.'
+        es: 'Los creadores de Compendium se eximen explícitamente de indemnizar o restaurar a ninguna parte involucrada ante menoscabos o pérdidas punitivas producidas directa o tangencialmente por percances que el uso de la propia plataforma pueda originar, fallas en la IA o alteración sobre los dispositivos implementados.',
+        en: 'Compendium creators explicitly waive any indemnification or restitution to any involved party over punitive damages or losses produced directly or tangentially by mishaps that the use of the platform itself might originate, AI failures or device alteration.'
     },
     'terms.mod.title': { es: '6. Modificaciones', en: '6. Modifications' },
     'terms.mod.desc': {

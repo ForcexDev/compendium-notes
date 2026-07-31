@@ -20,12 +20,7 @@ import { translations } from '../../lib/i18n';
         <p class="text-sm text-[var(--text-muted)] leading-relaxed max-w-xs mb-6" data-i18n="footer.tagline">
           Transforma cualquier audio o video en documentos estructurados con inteligencia artificial.
         </p>
-        <!-- Open Source badge -->
-        <div class="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-          <span data-i18n="footer.madewith">Hecho con</span>
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#ef4444" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
-          <span>— Open Source</span>
-        </div>
+        <!-- Removed Open Source badge -->
       </div>
 
       <!-- Product -->
@@ -64,9 +59,12 @@ import { translations } from '../../lib/i18n';
 
     <!-- Bottom bar -->
     <hr class="divider mb-6" />
+    <p class="text-xs text-[var(--text-muted)] mb-4" data-i18n="footer.ai_disclaimer">
+      La IA puede cometer errores. Verifica información importante.
+    </p>
     <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
       <p class="text-xs text-[var(--text-muted)]">
-        © 2026 <span data-i18n="footer.copyright">CompendiumNotes. Open Source.</span>
+        © 2026 <span data-i18n="footer.copyright">Compendium. Todos los derechos reservados.</span>
       </p>
       <div class="flex items-center gap-4">
         <a href="https://github.com/ForcexDev/compendium-notes" target="_blank" rel="noopener noreferrer" class="text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors" aria-label="GitHub">

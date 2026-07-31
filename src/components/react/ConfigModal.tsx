@@ -121,7 +121,7 @@ export default function ConfigModal() {
                                 }}
                             >
                                 <span className="block font-semibold mb-0.5">Groq</span>
-                                <span className="block text-[10px] opacity-70">Whisper + Llama 4 Scout</span>
+                                <span className="block text-[10px] opacity-70">Whisper + Llama 3</span>
                             </button>
                             <button
                                 onClick={() => !isProcessing && setProvider('gemini')}

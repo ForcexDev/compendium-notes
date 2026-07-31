@@ -33,8 +33,8 @@ The web application runs entirely in your browser using **client-side processing
 - **Dual AI Engine** - Choose between **Groq** (Extreme Speed) and **Gemini** (Massive Context & Multimodal).
 - **Smart Audio Chunking** - Automatically splits long audio files (e.g., 2+ hour lectures) into optimal segments using FFmpeg, avoiding API timeouts and enabling infinite transcription length for Gemini.
 - **Privacy-First Architecture** - Keys and data stored exclusively in `localStorage`. Direct Browser-to-API communication. Your data never touches our servers.
-- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini Flash 2.0** for lightning-fast, highly accurate audio-to-text.
-- **AI-Powered Organization** - Automatically extracts topics, key concepts, and generates structured **Markdown** notes using intelligent prompting.
+- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini 3.1 Flash Lite** for lightning-fast, highly accurate audio-to-text.
+- **AI-Powered Organization** - Automatically extracts topics, key concepts, and generates structured **Markdown** notes using intelligent prompting via **Gemini 3 Flash**.
 - **Premium Export** - Download your structured notes directly into **Minimalist**, **Academic**, or **Cornell** PDF styles.
 - **Built-in Audio Player** - Review your recordings while reading or editing the generated notes, with synchronized progress tracking.
 - **Dark & Light Mode** - Full support for both themes with automatic system preference detection.
@@ -55,8 +55,8 @@ Real-world processing performance for a 1-hour lecture (~50MB audio):
 
 | Provider | Model | Speed | Cost | Best For |
 |----------|-------|-------|------|----------|
-| **Groq** | Whisper v3 + Llama 4 Scout | ~15-30 seconds | **Free** | Fast drafts & short meetings |
-| **Gemini** | Flash 2.0 + Pro 2.5| ~30-45 seconds | **Free** | Long seminars, extreme accuracy |
+| **Groq** | Whisper v3 + Llama 3 | ~15-30 seconds | **Free** | Fast drafts & short meetings |
+| **Gemini** | 3.1 Flash Lite + 3 Flash| ~30-45 seconds | **Free** | Long seminars, extreme accuracy |
 
 **The Pipeline Flow:**
 1. **Audio Compression**: Large files are automatically compressed locally using Web Audio API down to 16kHz mono (reducing 100MB files to ~10MB).
@@ -82,7 +82,7 @@ graph TD
     
     subgraph "External AI APIs"
         Groq["Groq API (Whisper/Llama)"]
-        Gemini["Google API (Gemini Flash + Pro)"]
+        Gemini["Google API (Gemini 3.1 Flash Lite + 3 Flash)"]
     end
 
     User --> Upload
@@ -165,7 +165,7 @@ Enter them in the application settings (gear icon).
 ### "Rate Limit Exceeded" / "Resource Exhausted"
 - **Groq**: Free tier has strict per-minute limits. If you hit them, wait a minute or switch provider.
 - **Gemini**: If you see "Limit 0" or 429 immediately, you likely need to link a **Billing Account** (credit card) in [Google AI Studio](https://aistudio.google.com/app/plan).
-  - **Important**: The "Pay-as-you-go" plan often includes a massive **Free Tier** (or effectively **Unlimited** for Gemini Flash 2.0, as confirmed in testing) but requires identity verification.
+  - **Important**: The "Pay-as-you-go" plan often includes a massive **Free Tier** (or effectively **Unlimited** for Gemini 3.1 Flash Lite/3 Flash, as confirmed in testing) but requires identity verification.
   - Without billing, you are on a restricted "Free of Charge" tier which may be lower.
 
 ---

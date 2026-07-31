@@ -320,15 +320,15 @@ export default function UploadZone() {
                         </div>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {locale === 'es'
-                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa Whisper V3 Turbo + Llama 4 Scout.'
-                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses Whisper V3 Turbo + Llama 4 Scout.'}
+                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa Whisper V3 Turbo + Llama 3.'
+                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses Whisper V3 Turbo + Llama 3.'}
                         </p>
                     </div>
 
                     <div className="p-4 rounded-xl border transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-subtle)' }}>
                         <div className="flex items-center gap-2 mb-2" style={{ color: '#60a5fa' }}>
                             <BrainCircuit size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Gemini Flash 2.0 + Pro 2.5</span>
+                            <span className="text-xs font-semibold uppercase tracking-wider">Gemini 3.1 Flash Lite + 3 Flash</span>
                         </div>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {locale === 'es'
