@@ -8,3 +8,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Lockfiles: el proyecto se instala con el gestor que prefiera cada uno
+# (npm, bun, pnpm o yarn). No se fija ninguno en el repo.
+package-lock.json
+bun.lock
+bun.lockb
+pnpm-lock.yaml
+yarn.lock
