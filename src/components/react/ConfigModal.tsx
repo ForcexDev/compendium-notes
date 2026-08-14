@@ -222,22 +222,22 @@ export default function ConfigModal() {
                                     )}
                                 </span>
                                 {geminiInput.length > 5 && (
-                                    <span className={`text-[10px] ${geminiInput.startsWith('AI') ? 'text-green-500' : 'text-red-500'}`}>
-                                        {geminiInput.startsWith('AI') ? t('app.config.valid_format', locale) : t('app.config.invalid_format_gemini', locale)}
+                                    <span className={`text-[10px] ${geminiInput.startsWith('AQ') ? 'text-green-500' : 'text-red-500'}`}>
+                                        {geminiInput.startsWith('AQ') ? t('app.config.valid_format', locale) : t('app.config.invalid_format_gemini', locale)}
                                     </span>
                                 )}
                                 {geminiInput.length <= 5 && (
                                     <span className="text-[10px] text-[var(--text-muted)] opacity-70">
-                                        {t('app.config.format_label', locale)} AIza...
+                                        {t('app.config.format_label', locale)} AQ...
                                     </span>
                                 )}
                             </label>
                             <div className="flex gap-2">
                                 <div
-                                    className={`flex-1 flex items-center rounded-lg px-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg-secondary)] ${geminiInput.length > 0 && !geminiInput.startsWith('AI') ? 'border-red-500/50 bg-red-500/5' : ''}`}
+                                    className={`flex-1 flex items-center rounded-lg px-3 transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--accent)] focus-within:ring-offset-2 focus-within:ring-offset-[var(--bg-secondary)] ${geminiInput.length > 0 && !geminiInput.startsWith('AQ') ? 'border-red-500/50 bg-red-500/5' : ''}`}
                                     style={{
                                         background: 'var(--bg-primary)',
-                                        border: geminiInput.length > 0 && !geminiInput.startsWith('AI') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)'
+                                        border: geminiInput.length > 0 && !geminiInput.startsWith('AQ') ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-default)'
                                     }}
                                 >
                                     <input
@@ -246,7 +246,7 @@ export default function ConfigModal() {
                                         type={showGemini ? 'text' : 'password'}
                                         value={geminiInput}
                                         onChange={(e) => setGeminiInput(e.target.value)}
-                                        placeholder={geminiKey ? t('app.config.new_key', locale) : 'AIza...'}
+                                        placeholder={geminiKey ? t('app.config.new_key', locale) : 'AQ...'}
                                         className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
