@@ -115,6 +115,8 @@ export const translations = {
     'notif.analyzing': { es: 'Generando notas...', en: 'Generating notes...' },
     'notif.processing': { es: 'Procesando...', en: 'Processing...' },
     'notif.click_view': { es: 'Click para ver resultados', en: 'Click to view results' },
+    'notif.error': { es: 'Error en el proceso', en: 'Process failed' },
+    'notif.click_detail': { es: 'Click para ver el detalle', en: 'Click to see details' },
     'notif.audio_extracted': { es: 'Audio extraído', en: 'Audio extracted' },
     'notif.audio_optimized': { es: 'Audio optimizado', en: 'Audio optimized' },
     'notif.fragments': { es: 'fragmentos', en: 'fragments' },

@@ -109,8 +109,8 @@ graph TD
 ## 🚀 Installation
 
 ### Prerequisites
-- Node.js 18+
-- NPM or PNPM
+- Node.js 22.12+ (required by Astro 7)
+- Any package manager: npm, bun, pnpm or yarn — the repo pins none
 
 ### Quick Start
 
