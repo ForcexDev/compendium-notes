@@ -4,59 +4,123 @@ const GEMINI_UPLOAD_URL = 'https://generativelanguage.googleapis.com/upload/v1be
 import { getLanguageNameEn } from './languages';
 
 // ---------------------------------------------------------------------------
-// Modelos y sus límites reales de output tokens
-// Actualiza estos valores si los modelos cambian sus límites
+// Modelos, límites de free tier y cadenas de fallback
+// Actualiza esta tabla si Google cambia los límites o los IDs de modelo
 // ---------------------------------------------------------------------------
 
 /**
- * Tokens máximos de OUTPUT para cada modelo en operaciones de ORGANIZACIÓN.
- * Se usa el máximo real declarado por la API para aprovechar al máximo el modelo.
- * Si un modelo no está en el mapa, se usa 8192 como valor conservador por defecto.
+ * Límites reales del FREE TIER por modelo (AI Studio / Gemini API).
+ *  - rpm: requests por minuto
+ *  - tpm: tokens por minuto (input + output)
+ *  - rpd: requests por día
+ *  - maxOutput: tokens máximos de salida que acepta el modelo
+ *
+ * Los Flash Lite tienen 15 RPM / 500 RPD → son los únicos viables para
+ * transcripción por chunks (varias requests seguidas por audio).
+ * Los Flash tienen 5 RPM / 20 RPD → sólo sirven como red de seguridad.
  */
-export const ORGANIZATION_MAX_OUTPUT_TOKENS: Record<string, number> = {
-    'gemini-3-flash-preview': 65536,  // 64K
-    'gemini-3.1-flash-lite-preview': 8192,  // 8K  ← límite real del modelo
-    'gemini-2.5-flash-lite': 65536,  // 64K
-    'gemini-2.5-flash': 65536,  // 64K
+export const GEMINI_MODEL_LIMITS: Record<string, { rpm: number; tpm: number; rpd: number; maxOutput: number }> = {
+    'gemini-3.5-flash-lite':  { rpm: 15, tpm: 250_000, rpd: 500, maxOutput: 65536 },
+    'gemini-3.1-flash-lite':  { rpm: 15, tpm: 250_000, rpd: 500, maxOutput: 65536 },
+    'gemini-3.7-flash':       { rpm: 5,  tpm: 250_000, rpd: 20,  maxOutput: 65536 },
+    'gemini-3.6-flash':       { rpm: 5,  tpm: 250_000, rpd: 20,  maxOutput: 65536 },
+    'gemini-3.5-flash':       { rpm: 5,  tpm: 250_000, rpd: 20,  maxOutput: 65536 },
+    'gemini-3-flash-preview': { rpm: 5,  tpm: 250_000, rpd: 20,  maxOutput: 65536 },
 };
 
-/**
- * Tokens máximos de OUTPUT para TRANSCRIPCIÓN — fijo en 8192 para todos los modelos.
- * Los chunks son de 20 min máximo (~3000-5000 palabras = ~4000-6500 tokens),
- * así que 8192 da margen suficiente en cualquier modelo de la cadena de fallback.
- */
-export const TRANSCRIPTION_MAX_OUTPUT_TOKENS = 8192;
+/** Límites por defecto si el modelo no está en la tabla (conservadores). */
+const DEFAULT_MODEL_LIMITS = { rpm: 5, tpm: 250_000, rpd: 20, maxOutput: 8192 };
+
+const limitsFor = (model: string) => GEMINI_MODEL_LIMITS[model] ?? DEFAULT_MODEL_LIMITS;
 
 /**
- * Cadenas de fallback por tipo de operación.
- * El orden importa: primary → fallback1 → fallback2
- *
- * Transcripción: prioriza modelos con alto TPM (250K)
- *   - 3.1 Flash Lite Preview: 15 RPM · 250K TPM · 500 RPD  ← primario
- *   - 2.5 Flash Lite:         10 RPM · 250K TPM · 20 RPD   ← fallback 1
- *   - 2.5 Flash:               5 RPM · 250K TPM · 20 RPD   ← fallback 2
- *
- * Organización: prioriza calidad; si se agota el RPD diario, baja al siguiente
- *   - 3 Flash Preview:         5 RPM · 250K TPM · 20 RPD   ← primario  (65K output)
- *   - 3.1 Flash Lite Preview: 15 RPM · 250K TPM · 500 RPD  ← fallback 1 (8K output)
- *   - 2.5 Flash Lite:         10 RPM · 250K TPM · 20 RPD   ← fallback 2 (64K output)
+ * Cadena única de fallback: primario → fallback 1 → ... → último recurso.
+ * El orden importa y está pensado para el free tier:
+ *   1. 3.5 Flash Lite  · 15 RPM · 250K TPM · 500 RPD  ← primario
+ *   2. 3.1 Flash Lite  · 15 RPM · 250K TPM · 500 RPD  ← fallback principal
+ *   3. 3.7 Flash       ·  5 RPM · 250K TPM ·  20 RPD
+ *   4. 3.6 Flash       ·  5 RPM · 250K TPM ·  20 RPD
+ *   5. 3.5 Flash       ·  5 RPM · 250K TPM ·  20 RPD
+ *   6. 3 Flash Preview ·  5 RPM · 250K TPM ·  20 RPD
  */
-export const TRANSCRIPTION_FALLBACK_MODELS = [
-    'gemini-3.1-flash-lite-preview',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-flash',
-] as const;
-
-export const ORGANIZATION_FALLBACK_MODELS = [
+export const GEMINI_MODEL_CHAIN = [
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.7-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
     'gemini-3-flash-preview',
-    'gemini-3.1-flash-lite-preview',
-    'gemini-2.5-flash-lite',
 ] as const;
+
+export const TRANSCRIPTION_FALLBACK_MODELS = GEMINI_MODEL_CHAIN;
+export const ORGANIZATION_FALLBACK_MODELS = GEMINI_MODEL_CHAIN;
+
+/**
+ * Tokens máximos de OUTPUT para operaciones de ORGANIZACIÓN.
+ * Derivado de la tabla de límites: se aprovecha el máximo real del modelo.
+ */
+export const ORGANIZATION_MAX_OUTPUT_TOKENS: Record<string, number> = Object.fromEntries(
+    Object.entries(GEMINI_MODEL_LIMITS).map(([model, l]) => [model, l.maxOutput])
+);
+
+/**
+ * Tokens máximos de OUTPUT para TRANSCRIPCIÓN.
+ * Un chunk de 20 min puede rondar los 4-7K tokens de texto, pero los modelos
+ * 3.x son modelos de razonamiento: los tokens de "thinking" también consumen
+ * presupuesto de salida, así que 8192 provocaba cortes por MAX_TOKENS.
+ * maxOutputTokens es un TOPE, no una reserva — subirlo no gasta cuota extra
+ * (el TPM cuenta tokens realmente generados), sólo evita truncados.
+ */
+export const TRANSCRIPTION_MAX_OUTPUT_TOKENS = 32768;
+
+/**
+ * Coste aproximado en tokens de input por segundo de audio en Gemini (~32 tok/s).
+ * Se usa para no reventar el TPM cuando se transcriben chunks en paralelo.
+ */
+const AUDIO_INPUT_TOKENS_PER_SECOND = 32;
+
+/** Margen de seguridad sobre el TPM (no consumir el 100% de la ventana). */
+const TPM_SAFETY_FACTOR = 0.8;
+
+/**
+ * Cuántos chunks se pueden transcribir en paralelo sin superar RPM ni TPM.
+ *
+ * Un chunk de 20 min ≈ 1200 s × 32 tok/s ≈ 38.4K tokens de input. Con 250K TPM
+ * eso da ~5 chunks simultáneos como máximo; antes se lanzaban TODOS a la vez
+ * con Promise.all, lo que garantizaba un 429 en audios de más de ~1.5 h.
+ */
+export function maxParallelChunks(model: string, chunkSeconds: number): number {
+    const l = limitsFor(model);
+    const tokensPerChunk = Math.max(1, chunkSeconds * AUDIO_INPUT_TOKENS_PER_SECOND + TRANSCRIPTION_MAX_OUTPUT_TOKENS);
+    const byTpm = Math.floor((l.tpm * TPM_SAFETY_FACTOR) / tokensPerChunk);
+    return Math.max(1, Math.min(l.rpm, byTpm));
+}
+
+/**
+ * Política de reintentos y fallback.
+ *  - MAX_RETRIES_PER_MODEL: intentos contra el MISMO modelo antes de bajar al siguiente.
+ *  - MAX_CHAIN_PASSES: veces que se recorre la cadena entera. Si toda la cadena
+ *    está saturada ("high demand"), se espera y se da una segunda pasada en
+ *    lugar de fallar — los modelos con cuota DIARIA agotada se saltan.
+ *  - CHAIN_RETRY_DELAY_MS: espera entre pasadas de la cadena.
+ */
+export const MAX_RETRIES_PER_MODEL = 3;
+export const MAX_CHAIN_PASSES = 2;
+const CHAIN_RETRY_DELAY_MS = 15_000;
+
+/** Tope de espera para un único backoff. */
+const MAX_BACKOFF_MS = 60_000;
+
+/**
+ * Códigos HTTP que significan "el modelo está saturado / fallo transitorio".
+ * Son reintentables y, si persisten, deben provocar fallback al siguiente modelo.
+ */
+const OVERLOAD_STATUSES = new Set([500, 502, 503, 504]);
 
 /**
  * Umbral de duración para decidir la estrategia de transcripción:
  *   ≤ 20 min → transcribeWithGemini       (1 chunk, 1 request directo)
- *   > 20 min → transcribeWithGeminiChunked (N chunks de 20 min en paralelo)
+ *   > 20 min → transcribeWithGeminiChunked (N chunks de 20 min, en paralelo limitado)
  */
 export const DURATION_THRESHOLD_CHUNKING = 20;
 
@@ -263,6 +327,52 @@ function calculateSimilarity(text1: string, text2: string): number {
  *  - 429 RPD (cuota diaria agotada) o >3 reintentos: pasa al SIGUIENTE modelo de la cadena
  *  - Cualquier otro error HTTP: lanza inmediatamente
  */
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** Backoff exponencial con jitter para el intento n (0-indexado). */
+const backoffMs = (attempt: number) => Math.min(Math.pow(2, attempt + 1) * 1000 + Math.random() * 1500, MAX_BACKOFF_MS);
+
+/**
+ * Extraer el retryDelay que devuelve la API en los errores 429 (RetryInfo).
+ * Es mucho más fiable que un backoff a ciegas.
+ */
+function parseRetryDelayMs(err: any): number | null {
+    const details = err?.error?.details;
+    if (!Array.isArray(details)) return null;
+    for (const d of details) {
+        const raw = d?.retryDelay;
+        if (typeof raw === 'string') {
+            const m = raw.match(/^([\d.]+)s$/);
+            if (m) return Math.ceil(parseFloat(m[1]) * 1000);
+        }
+    }
+    return null;
+}
+
+/**
+ * ¿El 429 es por cuota DIARIA (RPD) agotada?
+ * Si lo es, esperar no sirve de nada: hay que saltar al siguiente modelo.
+ * Se mira el quotaId/quotaMetric de QuotaFailure (p. ej.
+ * "GenerateRequestsPerDayPerProjectPerModel-FreeTier") y sólo como último
+ * recurso el texto del mensaje. Importante NO tratar los límites por minuto
+ * como diarios: quemaría la cadena de modelos en segundos.
+ */
+function isDailyQuotaError(err: any): boolean {
+    const details = err?.error?.details;
+    if (Array.isArray(details)) {
+        for (const d of details) {
+            const violations = d?.violations;
+            if (!Array.isArray(violations)) continue;
+            for (const v of violations) {
+                const id = `${v?.quotaId || ''} ${v?.quotaMetric || ''}`.toLowerCase();
+                if (id.includes('perday') || id.includes('per_day')) return true;
+            }
+        }
+    }
+    const msg = (err?.error?.message || '').toLowerCase();
+    return msg.includes('per day') || msg.includes('perday') || msg.includes('daily limit');
+}
+
 async function geminiGenerateWithFallback(
     models: readonly string[],
     apiKey: string,
@@ -270,63 +380,108 @@ async function geminiGenerateWithFallback(
     label: string = 'Gemini',
     startModelIndex: number = 0
 ): Promise<{ data: any; modelUsed: string; modelIndex: number }> {
-    const MAX_RETRIES_PER_MODEL = 3;
+    // Modelos con cuota DIARIA agotada: no tiene sentido volver a intentarlos hoy.
+    const dailyExhausted = new Set<string>();
+    let lastError: Error | null = null;
+    let sawOverload = false;
 
-    for (let mi = startModelIndex; mi < models.length; mi++) {
-        const model = models[mi];
-        let attempt = 0;
+    for (let pass = 0; pass < MAX_CHAIN_PASSES; pass++) {
+        for (let mi = startModelIndex; mi < models.length; mi++) {
+            const model = models[mi];
+            if (dailyExhausted.has(model)) continue;
 
-        while (attempt < MAX_RETRIES_PER_MODEL) {
-            const response = await fetch(
-                `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(buildBody(model)),
-                }
-            );
+            for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
+                const isLastAttempt = attempt >= MAX_RETRIES_PER_MODEL - 1;
+                let response: Response;
 
-            if (response.ok) {
-                if (mi > startModelIndex) console.log(`[${label}] ✅ Success with fallback model: ${model}`);
-                return { data: await response.json(), modelUsed: model, modelIndex: mi };
-            }
-
-            if (response.status === 429) {
-                const err = await response.json().catch(() => ({}));
-                const message = (err?.error?.message || '').toLowerCase();
-
-                // RPD agotado → cambiar modelo ya
-                const isRPD =
-                    message.includes('per day') ||
-                    message.includes('daily') ||
-                    message.includes('quota exceeded for') ||
-                    attempt >= MAX_RETRIES_PER_MODEL - 1;
-
-                if (isRPD) {
-                    const nextModel = models[mi + 1];
-                    if (nextModel) {
-                        console.warn(`[${label}] ⚠️  ${model} quota exhausted → switching to ${nextModel}`);
-                    } else {
-                        console.error(`[${label}] ❌ All models exhausted`);
+                // --- Fallo de red (sin respuesta HTTP) → reintentable ---
+                try {
+                    response = await fetch(
+                        `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(buildBody(model)),
+                        }
+                    );
+                } catch (e: any) {
+                    lastError = new Error(`Fallo de red: ${e?.message || e}`);
+                    if (isLastAttempt) {
+                        console.warn(`[${label}] ⚠️  ${model}: network failures → next model`);
+                        break;
                     }
-                    break; // sale del while, pasa al siguiente modelo
+                    await sleep(backoffMs(attempt));
+                    continue;
                 }
 
-                // TPM/RPM → espera exponencial con jitter y reintenta mismo modelo
-                const waitMs = Math.pow(2, attempt + 1) * 1000 + Math.random() * 1500;
-                console.log(`[${label}] ⏳ Rate limited on ${model} (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL}), waiting ${(waitMs / 1000).toFixed(1)}s...`);
-                await new Promise(r => setTimeout(r, waitMs));
-                attempt++;
-                continue;
-            }
+                if (response.ok) {
+                    if (mi > startModelIndex || pass > 0) {
+                        console.log(`[${label}] ✅ Success with fallback model: ${model}`);
+                    }
+                    return { data: await response.json(), modelUsed: model, modelIndex: mi };
+                }
 
-            // Otro error HTTP → lanzar inmediatamente
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err?.error?.message || `Error (${response.status})`);
+                const err = await response.json().catch(() => ({}));
+                const apiMessage = err?.error?.message || `Error (${response.status})`;
+                lastError = new Error(apiMessage);
+
+                // --- Cuota diaria (RPD) agotada → esperar no sirve, saltar modelo ---
+                if (response.status === 429 && isDailyQuotaError(err)) {
+                    dailyExhausted.add(model);
+                    const next = models.slice(mi + 1).find(m => !dailyExhausted.has(m));
+                    console.warn(`[${label}] ⚠️  ${model}: daily quota (RPD) exhausted → ${next ? `switching to ${next}` : 'no models left'}`);
+                    break;
+                }
+
+                const overloaded = OVERLOAD_STATUSES.has(response.status);
+                const rateLimited = response.status === 429;
+
+                // --- Error real (400 body inválido, 403 key mala, 404 modelo inexistente…) ---
+                if (!overloaded && !rateLimited) {
+                    throw new Error(apiMessage);
+                }
+
+                if (overloaded) sawOverload = true;
+
+                // --- Agotados los reintentos de este modelo → siguiente de la cadena ---
+                if (isLastAttempt) {
+                    const reason = overloaded ? 'overloaded (high demand)' : 'rate limited';
+                    const next = models.slice(mi + 1).find(m => !dailyExhausted.has(m));
+                    if (next) {
+                        console.warn(`[${label}] ⚠️  ${model}: ${reason} after ${MAX_RETRIES_PER_MODEL} attempts → switching to ${next}`);
+                    } else {
+                        console.error(`[${label}] ❌ ${model}: ${reason} — end of chain (pass ${pass + 1}/${MAX_CHAIN_PASSES})`);
+                    }
+                    break;
+                }
+
+                // --- Reintentar el mismo modelo: retryDelay de la API si viene, si no backoff ---
+                const suggested = parseRetryDelayMs(err);
+                const waitMs = Math.min(suggested ?? backoffMs(attempt), MAX_BACKOFF_MS);
+                const what = overloaded ? `Overloaded (${response.status})` : 'Rate limited';
+                console.log(`[${label}] ⏳ ${what} on ${model} (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL}), waiting ${(waitMs / 1000).toFixed(1)}s${suggested ? ' (API retryDelay)' : ''}...`);
+                await sleep(waitMs);
+            }
+        }
+
+        // Fin de una pasada completa por la cadena.
+        const remaining = models.slice(startModelIndex).filter(m => !dailyExhausted.has(m));
+        if (remaining.length === 0) break;           // todo agotado por cuota diaria: no insistir
+        if (pass < MAX_CHAIN_PASSES - 1) {
+            const waitMs = CHAIN_RETRY_DELAY_MS + Math.random() * 5000;
+            console.warn(`[${label}] 🔁 Whole chain busy — waiting ${(waitMs / 1000).toFixed(0)}s and retrying (pass ${pass + 2}/${MAX_CHAIN_PASSES})`);
+            await sleep(waitMs);
         }
     }
 
-    throw new Error('Todos los modelos de Gemini alcanzaron su límite de cuota. Intenta en unos minutos.');
+    const allDaily = models.slice(startModelIndex).every(m => dailyExhausted.has(m));
+    if (allDaily) {
+        throw new Error('Todos los modelos de Gemini agotaron su cuota diaria (RPD). Inténtalo mañana o usa otra API Key.');
+    }
+    if (sawOverload) {
+        throw new Error(`Todos los modelos de Gemini están saturados ahora mismo. Inténtalo en unos minutos. (${lastError?.message || 'model overloaded'})`);
+    }
+    throw new Error(`Todos los modelos de Gemini alcanzaron su límite de cuota. Intenta en unos minutos.${lastError ? ` (${lastError.message})` : ''}`);
 }
 
 /**
@@ -640,7 +795,16 @@ export async function transcribeWithGeminiChunked(
 
     const startTime = Date.now();
 
-    const chunkPromises = chunks.map(async (chunk) => {
+    // Concurrencia limitada por RPM/TPM: lanzar TODOS los chunks a la vez
+    // supera los 250K TPM en cuanto hay más de ~5 chunks de 20 min.
+    const avgChunkSeconds = chunks.reduce((sum, c) => sum + (c.end - c.start), 0) / chunks.length;
+    const concurrency = Math.min(
+        chunks.length,
+        maxParallelChunks(TRANSCRIPTION_FALLBACK_MODELS[sharedModelIndex], avgChunkSeconds)
+    );
+    console.log(`[Gemini Chunked] Concurrency: ${concurrency}/${chunks.length} chunks in parallel (~${Math.round(avgChunkSeconds / 60)} min each)`);
+
+    const transcribeChunk = async (chunk: typeof chunks[number]) => {
         // Normalizar MIME type para el chunk - CRÍTICO para M4A
         const originalType = isPreChunked ? (file as File[])[0].type : (file as File).type;
         const originalName = isPreChunked ? (file as File[])[0].name : (file as File).name;
@@ -658,7 +822,7 @@ export async function transcribeWithGeminiChunked(
 
         // Usar el índice de modelo compartido; si este chunk sube de modelo,
         // actualizar el shared para que los chunks que aún no empezaron
-        // no repitan el ciclo de fallo.
+        // arranquen directamente en el modelo que sí responde.
         const startIdx = sharedModelIndex;
         const result = await transcribeWithGemini(chunkFile, apiKey, undefined, chunkDuration, startIdx);
 
@@ -674,9 +838,22 @@ export async function transcribeWithGeminiChunked(
             tokens: result.tokensUsed,
             offsetMinutes: Math.floor(chunk.start / 60)
         };
-    });
+    };
 
-    const results = await Promise.all(chunkPromises);
+    // Pool de workers: cada worker va tomando el siguiente chunk pendiente.
+    type ChunkResult = Awaited<ReturnType<typeof transcribeChunk>>;
+    const results: ChunkResult[] = [];
+    let nextChunkIndex = 0;
+
+    const worker = async () => {
+        while (true) {
+            const i = nextChunkIndex++;
+            if (i >= chunks.length) return;
+            results.push(await transcribeChunk(chunks[i]));
+        }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, worker));
 
     // 3. Post-procesamiento: Ajustar timestamps y eliminar duplicación
     console.log('[Gemini Chunked] 🔧 Post-processing...');

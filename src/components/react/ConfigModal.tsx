@@ -134,7 +134,7 @@ export default function ConfigModal() {
                                 }}
                             >
                                 <span className="block font-semibold mb-0.5">Gemini</span>
-                                <span className="block text-[10px] opacity-70">Flash 2.0 + Pro 2.5</span>
+                                <span className="block text-[10px] opacity-70">3.5 Flash Lite + fallbacks</span>
                             </button>
                         </div>
                     </div>

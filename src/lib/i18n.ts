@@ -28,8 +28,8 @@ export const translations = {
     },
     'features.transcribe.title': { es: 'Transcripción Dual', en: 'Dual Transcription' },
     'features.transcribe.desc': {
-        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento del ecosistema Gemini con 3.1 Flash Lite y 3 Flash.',
-        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini ecosystem reasoning with 3.1 Flash Lite and 3 Flash.',
+        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento del ecosistema Gemini con 3.5 Flash Lite y 3.1 Flash Lite.',
+        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini ecosystem reasoning with 3.5 Flash Lite and 3.1 Flash Lite.',
     },
     'features.organize.title': { es: 'Organización Inteligente', en: 'Intelligent Organization' },
     'features.organize.desc': {
@@ -102,7 +102,7 @@ export const translations = {
     'pricing.gemini.title': { es: 'Potencia', en: 'Power' },
     'pricing.gemini.desc': { es: 'Para contenido complejo', en: 'For complex content' },
     'pricing.gemini.price': { es: '$0', en: '$0' },
-    'pricing.gemini.f1': { es: 'Modelo Gemini 3.1 Flash Lite + 3 Flash', en: 'Gemini 3.1 Flash Lite + 3 Flash Models' },
+    'pricing.gemini.f1': { es: 'Modelo Gemini 3.5 Flash Lite + 3.1 Flash Lite', en: 'Gemini 3.5 Flash Lite + 3.1 Flash Lite Models' },
     'pricing.gemini.f2': { es: 'Contexto masivo (+45min)', en: 'Massive context (+45min)' },
     'pricing.gemini.f3': { es: 'Razonamiento multimodal', en: 'Multimodal reasoning' },
     'pricing.gemini.btn': { es: 'Obtener Key de Gemini', en: 'Get Gemini Key' },
