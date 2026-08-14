@@ -435,7 +435,7 @@ export default function NotesEditor() {
                 {/* Left Group: Tabs & Title */}
                 <div className="flex items-center gap-3 min-w-0">
                     {/* Tabs (mobile) */}
-                    <div className="flex items-center gap-1 sm:hidden flex-shrink-0">
+                    <div className="flex items-center gap-1 sm:hidden shrink-0">
                         <button
                             onClick={() => setActiveTab('edit')}
                             className="flex items-center gap-1.5 p-2 rounded-md transition-colors"
@@ -469,7 +469,7 @@ export default function NotesEditor() {
                 </div>
 
                 {/* Right Group: Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                     {/* 1. Copy */}
                     <button
                         onClick={handleCopy}
@@ -603,7 +603,7 @@ export default function NotesEditor() {
                             style={{ color: 'var(--text-secondary)' }}
                             title={t('app.config.pdfstyle', locale)}
                         >
-                            <Palette size={14} className="flex-shrink-0" />
+                            <Palette size={14} className="shrink-0" />
                             <span className="capitalize hidden sm:inline text-xs font-medium">{t(`app.style.${pdfStyle}` as any, locale)}</span>
                             <div className="hidden sm:block opacity-50">
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
@@ -655,7 +655,7 @@ export default function NotesEditor() {
                         }}
                         title={t('app.editor.new', locale)}
                     >
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                         <RotateCcw size={14} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
                         <span className="hidden md:inline relative z-10 font-medium">{t('app.editor.new', locale)}</span>
                     </button>
@@ -727,7 +727,7 @@ export default function NotesEditor() {
                             {stats.sections} {t('app.editor.sections' as any, locale)}
                         </span>
                         <span
-                            className="px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                            className="px-1.5 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wider whitespace-nowrap"
                             style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}
                         >
                             {t(`app.summary.${summaryLevel}` as any, locale)}
@@ -749,14 +749,14 @@ export default function NotesEditor() {
                         {/* Markdown Editor */}
                         <div className={`flex-1 min-h-0 ${activeTab !== 'edit' ? 'hidden sm:block' : ''} transition-all duration-300 relative group pb-20`}>
                             <div className="absolute inset-0 border-2 border-transparent pointer-events-none group-focus-within:border-[var(--accent)]/10 group-focus-within:bg-[var(--accent)]/[0.01] transition-all duration-500 rounded-lg"></div>
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-0 group-focus-within:opacity-100 transition-all duration-500 z-20"></div>
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-transparent via-[var(--accent)] to-transparent opacity-0 group-focus-within:opacity-100 transition-all duration-500 z-20"></div>
 
                             <textarea
                                 id="notes-editor"
                                 name="notes-editor"
                                 value={editedNotes}
                                 onChange={(e) => setEditedNotes(e.target.value)}
-                                className="w-full h-full resize-none bg-transparent p-4 sm:p-5 pb-20 text-sm font-mono focus:outline-none custom-scrollbar relative z-10"
+                                className="w-full h-full resize-none bg-transparent p-4 sm:p-5 pb-20 text-sm font-mono focus:outline-hidden custom-scrollbar relative z-10"
                                 style={{ color: 'var(--text-primary)', lineHeight: 1.7 }}
                                 spellCheck={false}
                             />
@@ -768,7 +768,7 @@ export default function NotesEditor() {
                         {/* Preview */}
                         <div className={`flex-1 min-h-0 overflow-auto bg-[var(--bg-tertiary)] dark:bg-[var(--bg-primary)] p-4 sm:p-6 pb-20 custom-scrollbar ${activeTab !== 'preview' ? 'hidden sm:block' : ''}`}>
                             <div
-                                className="mx-auto shadow-xl rounded-sm min-h-full max-w-[800px]"
+                                className="mx-auto shadow-xl rounded-xs min-h-full max-w-[800px]"
                                 style={{
                                     background: previewStyles.bg,
                                     border: '1px solid var(--border-subtle)',
@@ -807,7 +807,7 @@ export default function NotesEditor() {
                                     >
                                         <button
                                             onClick={toggleAudio}
-                                            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-colors shadow-sm"
+                                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors shadow-xs"
                                             style={{ background: 'var(--accent)', color: '#fff' }}
                                         >
                                             {audioPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" style={{ marginLeft: 2 }} />}
@@ -832,7 +832,7 @@ export default function NotesEditor() {
                                         </div>
 
                                         {/* Volume Slider visible on all devices */}
-                                        <div className="flex items-center gap-1.5 flex-shrink-0 group ml-2">
+                                        <div className="flex items-center gap-1.5 shrink-0 group ml-2">
                                             <button onClick={() => {
                                                 const newV = volume > 0 ? 0 : 1;
                                                 setVolume(newV);
@@ -875,14 +875,14 @@ export default function NotesEditor() {
                             <div className="w-full sm:w-1/2">
                                 <button
                                     onClick={reset}
-                                    className="w-full flex items-center justify-center gap-2.5 px-4 h-[54px] rounded-lg font-semibold transition-all duration-200 group relative overflow-hidden shadow-sm"
+                                    className="w-full flex items-center justify-center gap-2.5 px-4 h-[54px] rounded-lg font-semibold transition-all duration-200 group relative overflow-hidden shadow-xs"
                                     style={{
                                         background: 'var(--accent)',
                                         color: '#fff',
                                     }}
                                 >
                                     {/* Hover shine effect */}
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
 
                                     <RotateCcw size={16} className="relative z-10 group-hover:rotate-180 transition-transform duration-500" />
                                     <span className="relative z-10 text-sm">

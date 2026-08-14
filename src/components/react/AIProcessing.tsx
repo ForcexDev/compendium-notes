@@ -66,7 +66,7 @@ export default function AIProcessing() {
                                 opacity: !isComplete && !isActive ? 0.4 : 1,
                             }}
                         >
-                            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{
                                 background: isComplete ? 'var(--accent)' : isActive ? 'var(--accent-subtle)' : 'var(--bg-tertiary)',
                             }}>
                                 {isComplete ? (

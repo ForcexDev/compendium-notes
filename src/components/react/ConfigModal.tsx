@@ -146,7 +146,7 @@ export default function ConfigModal() {
                                 <span className="flex items-center gap-1.5">
                                     Groq API Key
                                     {apiKey && !groqInput && (
-                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold">
+                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded-sm border border-emerald-500/20 font-semibold">
                                             <BadgeCheck size={10} />
                                             {t('app.config.active_encrypted', locale)}
                                         </span>
@@ -179,7 +179,7 @@ export default function ConfigModal() {
                                         value={groqInput}
                                         onChange={(e) => setGroqInput(e.target.value)}
                                         placeholder={apiKey ? t('app.config.new_key', locale) : 'gsk_...'}
-                                        className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm py-2.5 font-mono"
+                                        className="flex-1 bg-transparent border-none outline-hidden focus:outline-hidden focus:ring-0 text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
                                     <button onClick={() => setShowGroq(!showGroq)} className="p-1 ml-1" style={{ color: 'var(--text-muted)' }}>
@@ -215,7 +215,7 @@ export default function ConfigModal() {
                                 <span className="flex items-center gap-1.5">
                                     Gemini API Key
                                     {geminiKey && !geminiInput && (
-                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded border border-emerald-500/20 font-semibold">
+                                        <span className="flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded-sm border border-emerald-500/20 font-semibold">
                                             <BadgeCheck size={10} />
                                             {t('app.config.active_encrypted', locale)}
                                         </span>
@@ -247,7 +247,7 @@ export default function ConfigModal() {
                                         value={geminiInput}
                                         onChange={(e) => setGeminiInput(e.target.value)}
                                         placeholder={geminiKey ? t('app.config.new_key', locale) : 'AQ...'}
-                                        className="flex-1 bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm py-2.5 font-mono"
+                                        className="flex-1 bg-transparent border-none outline-hidden focus:outline-hidden focus:ring-0 text-sm py-2.5 font-mono"
                                         style={{ color: 'var(--text-primary)' }}
                                     />
                                     <button onClick={() => setShowGemini(!showGemini)} className="p-1 ml-1" style={{ color: 'var(--text-muted)' }}>
@@ -341,7 +341,7 @@ export default function ConfigModal() {
 
                     {/* Error Message */}
                     {errorMsg && (
-                        <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded border border-red-500/20">
+                        <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded-sm border border-red-500/20">
                             {errorMsg}
                         </div>
                     )}

@@ -152,12 +152,12 @@ export default function TranscriptionProgress() {
                         }}
                     >
                         {/* Shimmer effect */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" style={{ animationDuration: '2s' }} />
+                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-shimmer" style={{ animationDuration: '2s' }} />
 
                         {/* Content Container */}
                         <div className="flex items-center gap-4 relative z-10">
                             {/* Icon (Simple, no frame) */}
-                            <div className="flex-shrink-0">
+                            <div className="shrink-0">
                                 <div className="p-2 rounded-lg bg-[rgba(168,85,247,0.1)]">
                                     <Sparkles size={20} className="text-[var(--accent)]" />
                                 </div>

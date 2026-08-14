@@ -373,7 +373,7 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
                         {/* Play/Pause */}
                         <button
                             onClick={togglePlayback}
-                            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors"
                             style={{ background: 'var(--accent)', color: '#fff' }}
                         >
                             {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" style={{ marginLeft: 2 }} />}
@@ -404,7 +404,7 @@ export default function AudioRecorder({ onRecordingComplete, onCancel }: AudioRe
                         </div>
 
                         {/* Volume Slider */}
-                        <div className="flex items-center gap-1.5 flex-shrink-0 group">
+                        <div className="flex items-center gap-1.5 shrink-0 group">
                             {volume === 0 ? <VolumeX size={14} style={{ color: 'var(--text-muted)' }} /> : <Volume2 size={14} style={{ color: 'var(--text-muted)' }} />}
                             <input
                                 type="range"

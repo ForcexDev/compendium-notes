@@ -1,9 +1,20 @@
 /* ===== FONTS ===== */
 /* Google Fonts loaded via <link> in Layout.astro to avoid render-blocking @import */
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Dark mode por clase (equivalente al antiguo `darkMode: 'class'`) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== THEME (lo único que se usaba del antiguo tailwind.config.mjs) ===== */
+@theme {
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --leading-relaxed: 1.6;
+
+    --animate-shimmer: shimmer 2s linear infinite;
+}
 
 /* ===== DESIGN TOKENS ===== */
 :root {
@@ -62,6 +73,11 @@
 
     --grid-line: rgba(255, 255, 255, 0.05);
 }
+
+/* Tailwind 4 usa cascade layers nativas: lo no-layered gana a `@layer utilities`.
+   Estos resets viven en `base` para que las utilidades sigan pudiendo sobreescribirlos,
+   igual que ocurría en Tailwind 3. */
+@layer base {
 
 /* ===== LAYOUT CONTAINMENT ===== */
 /* Prevent layout shifts in one section from affecting others */
@@ -124,6 +140,13 @@ html.no-transition *,
 html.no-transition *::before,
 html.no-transition *::after {
     transition: none !important;
+}
+
+    /* Tailwind 4 pone `cursor: default` en los botones; restauramos el puntero. */
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
 }
 
 /* ===== CONTAINERS ===== */
@@ -322,6 +345,8 @@ html.no-transition *::after {
     }
 }
 
+@layer base {
+
 /* ===== SELECTION ===== */
 ::selection {
     background: rgba(139, 92, 246, 0.25);
@@ -333,6 +358,7 @@ html.no-transition *::after {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
     border-radius: 4px;
+}
 }
 
 /* ===== ANIMATIONS ===== */

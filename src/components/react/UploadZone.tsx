@@ -202,7 +202,7 @@ export default function UploadZone() {
                     </div>
                 ) : (
                     <div className="flex items-center gap-4 text-left" onClick={(e) => e.stopPropagation()}>
-                        <div className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'var(--accent-subtle)' }}>
+                        <div className="w-11 h-11 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-subtle)' }}>
                             <FileAudio size={18} style={{ color: 'var(--accent)' }} />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -216,7 +216,7 @@ export default function UploadZone() {
                                     setFile(null);
                                     if (inputRef.current) inputRef.current.value = '';
                                 }}
-                                className="text-xs px-2 py-1 rounded transition-colors"
+                                className="text-xs px-2 py-1 rounded-sm transition-colors"
                                 style={{ color: 'var(--text-muted)' }}
                                 title={t('app.upload.remove', locale) || 'Remove file'}
                             >

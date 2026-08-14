@@ -81,7 +81,7 @@ export default function SearchableLanguageSelect({ disabled = false }: { disable
                                     placeholder={locale === 'es' ? 'Buscar idioma...' : 'Search language...'}
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full bg-transparent text-sm py-2 pl-9 pr-3 rounded-md outline-none"
+                                    className="w-full bg-transparent text-sm py-2 pl-9 pr-3 rounded-md outline-hidden"
                                     style={{ color: 'var(--text-primary)' }}
                                 />
                             </div>
