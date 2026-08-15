@@ -65,6 +65,21 @@ interface AppState {
     outputLanguage: OutputLanguage;
     setOutputLanguage: (lang: OutputLanguage) => void;
 
+    // Transcription Model
+    transcriptionModel: string;
+    setTranscriptionModel: (model: string) => void;
+
+    /**
+     * Fragmentos que se transcriben a la vez. 0 = automático.
+     *
+     * Es una decisión con dos caras y por eso la toma el usuario: más
+     * simultáneos terminan antes, pero acercan la tanda al límite del free
+     * tier (15 peticiones/minuto, 250K tokens/minuto), y a partir de ahí cada
+     * reintento provoca el siguiente. El pipeline nunca sube del techo real.
+     */
+    chunkConcurrency: number;
+    setChunkConcurrency: (n: number) => void;
+
     // Config
     configOpen: boolean;
     setConfigOpen: (open: boolean) => void;
@@ -88,6 +103,7 @@ interface AppState {
     // Actions
     startProcessing: (file: File) => void;
     cancelProcessing: () => void;
+    retryProcessing: () => void;
     restoreSession: () => Promise<void>; // New Action
 
     // Theme
@@ -125,8 +141,25 @@ function getInitialOutputLanguage(): OutputLanguage {
     return stored || 'auto';
 }
 
+/** Veces que se reintenta retomar un proceso interrumpido antes de rendirse. */
+const MAX_RESUME_ATTEMPTS = 1;
+
+function getInitialChunkConcurrency(): number {
+    if (typeof window === 'undefined') return 0;
+    const stored = Number(localStorage.getItem('scn-chunk-concurrency'));
+    return Number.isFinite(stored) && stored > 0 ? Math.min(8, Math.round(stored)) : 0;
+}
+
+function getInitialTranscriptionModel(): string {
+    if (typeof window === 'undefined') return 'auto';
+    const stored = localStorage.getItem('scn-transcription-model');
+    return stored || 'auto';
+}
+
 // Import DB dynamically to avoid SSR issues if store is used there (though unlikely in standard React usage)
 import { db, createProject, saveAudioSource, getActiveProject } from './db';
+import { progress } from './progress';
+import { abortRun } from './pipeline-control';
 import { encryptData, decryptData } from './crypto';
 
 export const useAppStore = create<AppState>()(
@@ -159,6 +192,18 @@ export const useAppStore = create<AppState>()(
             setOutputLanguage: (outputLanguage) => {
                 if (typeof window !== 'undefined') localStorage.setItem('scn-output-lang', outputLanguage);
                 set({ outputLanguage });
+            },
+
+            transcriptionModel: getInitialTranscriptionModel(),
+            setTranscriptionModel: (transcriptionModel) => {
+                if (typeof window !== 'undefined') localStorage.setItem('scn-transcription-model', transcriptionModel);
+                set({ transcriptionModel });
+            },
+
+            chunkConcurrency: getInitialChunkConcurrency(),
+            setChunkConcurrency: (chunkConcurrency) => {
+                if (typeof window !== 'undefined') localStorage.setItem('scn-chunk-concurrency', String(chunkConcurrency));
+                set({ chunkConcurrency });
             },
 
             apiKey: typeof window !== 'undefined' ? localStorage.getItem('scn-api-key') || '' : '',
@@ -266,7 +311,7 @@ export const useAppStore = create<AppState>()(
                     const id = await createProject(file.name);
                     await saveAudioSource(id, file);
                     // Explicitly mark as processing so restoreSession knows to resume it
-                    await db.projects.update(id, { status: 'processing' });
+                    await db.projects.update(id, { status: 'processing', resumeAttempts: 0 });
 
                     set({
                         currentProjectId: id,
@@ -289,7 +334,33 @@ export const useAppStore = create<AppState>()(
                 }
             },
 
+            /**
+             * Reintenta con el mismo archivo tras un fallo, sin obligar a
+             * volver a la pantalla de subida ni a elegir el archivo otra vez.
+             */
+            retryProcessing: () => {
+                const { file, currentProjectId } = get();
+                if (!file) return;
+                if (currentProjectId) {
+                    db.projects.update(currentProjectId, { status: 'processing', resumeAttempts: 0 })
+                        .catch(() => { /* informativo */ });
+                }
+                progress.resetIdle();
+                set({
+                    error: null,
+                    processingState: 'compressing',
+                    processingProgress: 0,
+                    step: 'transcribing',
+                    compressionInfo: '',
+                });
+            },
+
             cancelProcessing: async () => {
+                // Primero cortar el trabajo, luego limpiar. Al revés, la
+                // ejecución seguía viva contra la API y, al terminar, escribía
+                // sus resultados encima de un estado ya reiniciado.
+                abortRun();
+                progress.resetIdle();
                 const { currentProjectId } = get();
                 if (currentProjectId) {
                     try {
@@ -339,7 +410,24 @@ export const useAppStore = create<AppState>()(
                                 return;
                             }
 
-                            console.log('Auto-resuming interrupted process...');
+                            // Si ya se intentó retomar y la pestaña volvió a
+                            // caer, insistir sólo repite el mismo desenlace.
+                            const attempts = active.project.resumeAttempts ?? 0;
+                            if (attempts >= MAX_RESUME_ATTEMPTS) {
+                                console.warn('[Store] Reanudación abandonada tras', attempts, 'intentos');
+                                await db.projects.update(active.project.id, { status: 'error' });
+                                set({
+                                    processingState: 'idle',
+                                    step: 'upload',
+                                    error: get().locale === 'es'
+                                        ? 'El proceso anterior no pudo completarse dos veces seguidas, así que se ha detenido. Prueba con un archivo más corto o convierte el vídeo a audio antes de subirlo.'
+                                        : 'The previous run failed twice in a row, so it has been stopped. Try a shorter file, or convert the video to audio before uploading.',
+                                });
+                                return;
+                            }
+
+                            console.log(`Auto-resuming interrupted process (intento ${attempts + 1}/${MAX_RESUME_ATTEMPTS})...`);
+                            await db.projects.update(active.project.id, { resumeAttempts: attempts + 1 });
                             set({
                                 processingState: 'compressing',
                                 step: 'transcribing' // Force UI to show progress, not upload
@@ -352,6 +440,8 @@ export const useAppStore = create<AppState>()(
             },
 
             reset: () => {
+                abortRun();
+                progress.resetIdle();
                 // Clear persisted storage for content
                 set({
                     step: 'upload',

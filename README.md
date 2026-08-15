@@ -33,7 +33,7 @@ The web application runs entirely in your browser using **client-side processing
 - **Dual AI Engine** - Choose between **Groq** (Extreme Speed) and **Gemini** (Massive Context & Multimodal).
 - **Smart Audio Chunking** - Automatically splits long audio files (e.g., 2+ hour lectures) into optimal segments using FFmpeg, avoiding API timeouts and enabling infinite transcription length for Gemini.
 - **Privacy-First Architecture** - Keys and data stored exclusively in `localStorage`. Direct Browser-to-API communication. Your data never touches our servers.
-- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini 3.1 Flash Lite** for lightning-fast, highly accurate audio-to-text.
+- **Intelligent Transcription** - Uses **Whisper v3 Turbo** (via Groq) or **Gemini 3.5 Flash Lite** for lightning-fast, highly accurate audio-to-text.
 - **AI-Powered Organization** - Automatically extracts topics, key concepts, and generates structured **Markdown** notes using intelligent prompting via **Gemini 3 Flash**.
 - **Premium Export** - Download your structured notes directly into **Minimalist**, **Academic**, or **Cornell** PDF styles.
 - **Built-in Audio Player** - Review your recordings while reading or editing the generated notes, with synchronized progress tracking.
@@ -55,14 +55,14 @@ Real-world processing performance for a 1-hour lecture (~50MB audio):
 
 | Provider | Model | Speed | Cost | Best For |
 |----------|-------|-------|------|----------|
-| **Groq** | Whisper v3 + Llama 3 | ~15-30 seconds | **Free** | Fast drafts & short meetings |
-| **Gemini** | 3.1 Flash Lite + 3 Flash| ~30-45 seconds | **Free** | Long seminars, extreme accuracy |
+| **Groq** | Whisper v3 Turbo + GPT-OSS 120B | ~15-30 seconds | **Free** | Fast drafts & short meetings |
+| **Gemini** | 3.5/3.1 Flash Lite (transcribe) + 3.7 Flash (notes) | ~30-45 seconds | **Free** | Long seminars, extreme accuracy |
 
 **The Pipeline Flow:**
 1. **Audio Compression**: Large files are automatically compressed locally using Web Audio API down to 16kHz mono (reducing 100MB files to ~10MB).
-2. **Intelligent Chunking**: If using Gemini and the audio exceeds 45 minutes, it is seamlessly split into 30-minute chunks using FFmpeg WebAssembly.
-3. **Parallel Transcription**: The chunks are sent directly from your browser to the AI provider.
-4. **Markdown Organization**: The raw transcript is passed back to the AI to extract a title, format into Markdown sections, and summarize.
+2. **Intelligent Chunking**: Anything longer than 10 minutes is split into **10-minute chunks** (FFmpeg WebAssembly for container formats, byte splicing for MP3/WAV). Short chunks keep each model call inside the range where it stays accurate, and a failure costs ten minutes of audio instead of an hour.
+3. **Parallel Transcription**: Chunks go straight from your browser to **Flash Lite only** (15 RPM · 500 RPD), several at a time — you choose how many, and the app never exceeds what the free tier allows. Responses are **streamed**, so each chunk's progress bar moves with the timestamps the model emits.
+4. **Markdown Organization**: The full transcript goes back in **one large request** to a **Flash** model, which writes the title and the structured notes. Flash models only allow **20 requests a day** each, so when all four are spent the app falls back to Flash Lite rather than throwing away a transcript it already paid for. There is **no Pro fallback**: every Pro model reports a `0/0` free-tier quota.
 5. **Interactive Editor**: Review the transcript, edit the markdown, and export to PDF.
 
 ---
@@ -81,8 +81,8 @@ graph TD
     end
     
     subgraph "External AI APIs"
-        Groq["Groq API (Whisper/Llama)"]
-        Gemini["Google API (Gemini 3.1 Flash Lite + 3 Flash)"]
+        Groq["Groq API (Whisper/GPT-OSS)"]
+        Gemini["Google API (Flash Lite: transcribe · Flash: notes)"]
     end
 
     User --> Upload
@@ -90,9 +90,9 @@ graph TD
     Store --> App
     
     App --> AudioAPI
-    AudioAPI -- "If > 45 mins & Gemini" --> FFmpeg
+    AudioAPI -- "If > 10 mins & Gemini" --> FFmpeg
     AudioAPI -- "Otherwise" --> APIs
-    FFmpeg -- "Multiple Parallel Chunks" --> Gemini
+    FFmpeg -- "10-min chunks, N in parallel" --> Gemini
     
     APIs{"API Router"}
     APIs -- "Direct HTTPS" --> Groq
@@ -181,6 +181,37 @@ Contributions are welcome! Please open an issue to discuss major changes before 
 5. Open a Pull Request
 
 ---
+
+---
+
+## 🧪 Tests
+
+Suite de tests con [Vitest](https://vitest.dev/). Toda la red está simulada (`fetch` y `XMLHttpRequest`), así que **no consume API keys ni cuota**.
+
+```bash
+npm test          # ejecuta la suite completa
+npm run test:watch
+npm run check     # comprobación de tipos (astro check)
+```
+
+| Archivo | Cubre |
+|---------|-------|
+| `tests/unit/text-cleanup.test.ts` | Detección y limpieza de bucles de repetición del modelo, parseo de timestamps |
+| `tests/unit/progress.test.ts` | Motor de progreso: ponderación por tiempo, monotonía, ETA, tablero de fragmentos |
+| `tests/gemini/transcribe-standard.test.ts` | Transcripción sin fragmentar: correcta, truncada, en bucle, bloqueada |
+| `tests/gemini/transcribe-chunked.test.ts` | Fragmentos: reintento aislado, reanudación, escalada, consolidación, presupuesto |
+| `tests/gemini/transcribe-model-selection.test.ts` | Selector de modelo: modo auto con fallback y modelo fijo con reintentos sin fallback |
+| `tests/gemini/api-errors.test.ts` | Catálogo de errores de la API: 400/403/404, 429 RPM y RPD, 5xx, red, subida |
+| `tests/gemini/organize.test.ts` | Generación de apuntes: streaming, idioma, bucles, errores, quién redacta y con qué respaldo |
+| `tests/groq/groq.test.ts` | Whisper y GPT-OSS: segmentos, límites, cadena de modelos, ventana de TPM |
+| `tests/gemini/regressions.test.ts` | Fallos reales observados en producción, para que no vuelvan |
+| `tests/gemini/streaming-progress.test.ts` | Streaming: avance dentro de un fragmento, metadatos por fragmento, tamaño de corte |
+| `tests/ui/processing-view.test.tsx` | Pantalla de progreso: pasos, fragmentos, registro y permiso de escalada |
+| `tests/ui/hero-rotator.test.tsx` | Rotador del hero: monta, es visible y rota |
+
+El arnés vive en `tests/helpers/mock-gemini.ts` e incluye constructores para cada
+error real de la API (`rateLimit()`, `dailyQuota()`, `overloaded()`, `badKey()`…),
+respuestas SSE troceadas y transcripciones sintéticas.
 
 ## 📄 License
 

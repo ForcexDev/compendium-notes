@@ -5,8 +5,7 @@ import { useAppStore } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import UploadZone from './UploadZone';
 import ConfigModal from './ConfigModal';
-import TranscriptionProgress from './TranscriptionProgress';
-import AIProcessing from './AIProcessing';
+import ProcessingView from './ProcessingView';
 import NotesEditor from './NotesEditor';
 
 // --- AJUSTE DE POSICIÓN VERTICAL ---
@@ -34,13 +33,11 @@ export default function AppMain() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
 
-    // Auto-dismiss errors after 5s
-    useEffect(() => {
-        if (error) {
-            const timer = setTimeout(() => setError(null), 5000);
-            return () => clearTimeout(timer);
-        }
-    }, [error, setError]);
+    // Los errores se cierran a mano.
+    //
+    // Antes se borraban solos a los 5 s: un proceso que fallaba a los veinte
+    // minutos dejaba un aviso que se desvanecía antes de que nadie lo leyera, y
+    // el usuario se encontraba en la pantalla de subida sin saber por qué.
 
     // Browser navigation & Strict Guards (Unified)
     useEffect(() => {
@@ -51,6 +48,9 @@ export default function AppMain() {
             const hasTrans = !!currentStoreState.transcription;
             const processingSt = currentStoreState.processingState;
             const isProcessing = ['compressing', 'uploading', 'transcribing', 'analyzing'].includes(processingSt);
+            // Un proceso fallido conserva su pantalla: ahí está el registro que
+            // explica qué salió mal y desde ahí se puede reintentar.
+            const isFailed = processingSt === 'error';
 
             let correctedStep = currentStep;
 
@@ -59,7 +59,7 @@ export default function AppMain() {
                 correctedStep = 'transcribing';
             }
             // 2. Force retreat if no data and idle
-            else if (!hasNotes && !hasTrans && !isProcessing && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
+            else if (!hasNotes && !hasTrans && !isProcessing && !isFailed && (currentStep === 'ai-processing' || currentStep === 'editor' || currentStep === 'transcribing')) {
                 correctedStep = 'upload';
             }
             // 3. Prevent stuck in upload if data exists
@@ -173,19 +173,14 @@ export default function AppMain() {
                             </div>
                         </motion.div>
                     )}
-                    {step === 'transcribing' && (
-                        <motion.div key="transcribing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }} 
+                    {/* Transcripción y organización comparten pantalla: son dos
+                        etapas del mismo proceso y separarlas obligaba a reiniciar
+                        la barra a mitad de camino. */}
+                    {(step === 'transcribing' || step === 'ai-processing') && (
+                        <motion.div key="processing" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}
                             className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center custom-scrollbar overflow-y-auto overflow-x-hidden">
-                            <div className="w-full max-w-lg vertical-offset-active">
-                                <TranscriptionProgress />
-                            </div>
-                        </motion.div>
-                    )}
-                    {step === 'ai-processing' && (
-                        <motion.div key="ai" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3 }} 
-                            className="absolute inset-0 p-4 sm:p-6 flex flex-col items-center justify-center custom-scrollbar overflow-y-auto overflow-x-hidden">
-                            <div className="w-full max-w-lg vertical-offset-active">
-                                <AIProcessing />
+                            <div className="w-full max-w-xl vertical-offset-active">
+                                <ProcessingView />
                             </div>
                         </motion.div>
                     )}

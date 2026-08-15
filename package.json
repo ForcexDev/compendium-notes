@@ -7,7 +7,12 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "astro check",
+    "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@astrojs/react": "^6.0.2",
@@ -22,7 +27,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "astro": "^7.2.2",
-    "dexie": "^4.4.4",
+    "dexie": "^4.4.5",
     "framer-motion": "^13.1.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
@@ -31,5 +36,11 @@
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3",
     "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "jsdom": "^30.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

@@ -5,7 +5,17 @@ export interface Project {
     title: string;
     createdAt: number;
     updatedAt: number;
-    status: 'draft' | 'processing' | 'done' | 'cancelled';
+    status: 'draft' | 'processing' | 'done' | 'cancelled' | 'error';
+    /**
+     * Veces que se ha intentado retomar este proyecto tras una recarga.
+     *
+     * Si el proceso mata la pestaña (memoria agotada), al volver a abrir la app
+     * la sesión se restauraba y arrancaba otra vez el mismo trabajo, que volvía
+     * a matarla: un bucle de reinicios del que no se salía sin borrar los datos
+     * del sitio. Con un contador, se reintenta una vez y luego se para y se
+     * explica.
+     */
+    resumeAttempts?: number;
 }
 
 export interface AudioSource {
@@ -53,7 +63,8 @@ export async function createProject(title: string): Promise<number> {
         title,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        status: 'draft'
+        status: 'draft',
+        resumeAttempts: 0
     });
     return id as number;
 }

@@ -1,7 +1,8 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../lib/store';
+import { resolveTranscriptionModel, transcriptionModelsFor } from '../../lib/models';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, Clock, Volume2, ArrowRight, Sparkles, Zap, BrainCircuit, Info, RefreshCw } from 'lucide-react';
+import { Upload, FileAudio, FileVideo, Mic, Loader2, AlertCircle, CheckCircle, Clock, Volume2, ArrowRight, Sparkles, Zap, BrainCircuit, Info, RefreshCw, ChevronDown } from 'lucide-react';
 import { t } from '../../lib/i18n';
 
 import AudioRecorder from './AudioRecorder';
@@ -38,7 +39,7 @@ const MAX_SIZE_GROQ = 150 * 1024 * 1024; // 150MB para Groq (que luego comprime)
 const MAX_SIZE_GEMINI = 500 * 1024 * 1024; // 500MB para Gemini
 
 export default function UploadZone() {
-    const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState, summaryLevel, setSummaryLevel } = useAppStore();
+    const { setFile, startProcessing, setError, apiKey, geminiKey, provider, setConfigOpen, locale, file, processingState, summaryLevel, setSummaryLevel, transcriptionModel, setTranscriptionModel } = useAppStore();
     const [isDragging, setIsDragging] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [showHint, setShowHint] = useState(false);
@@ -60,6 +61,15 @@ export default function UploadZone() {
     }, [file, processingState]);
 
     const validate = useCallback((f: File): boolean => {
+        // Un archivo vacío pasaba el filtro y moría mucho más tarde, con un
+        // mensaje del proveedor que no decía nada útil.
+        if (f.size === 0) {
+            setError(locale === 'es'
+                ? 'El archivo está vacío. Comprueba que la grabación se guardó bien.'
+                : 'The file is empty. Check that the recording was saved correctly.');
+            return false;
+        }
+
         const isSupportedType = f.type && ACCEPTED.includes(f.type);
 
         // Extensiones soportadas (cobertura completa)
@@ -292,6 +302,42 @@ export default function UploadZone() {
                 </motion.div>
             )}
 
+            {/* Transcription Model Selector */}
+            {file && processingState === 'idle' && (
+                <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-4"
+                >
+                    <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>
+                        {t('app.config.transcription_model', locale)}
+                    </label>
+                    <div className="relative">
+                        <select
+                            id="upload-transcription-model-select"
+                            value={resolveTranscriptionModel(provider, transcriptionModel)}
+                            disabled={processingState !== 'idle'}
+                            onChange={(e) => setTranscriptionModel(e.target.value)}
+                            className="w-full py-2.5 px-3 pr-8 rounded-lg text-xs font-medium transition-all appearance-none cursor-pointer outline-hidden focus:ring-2 focus:ring-[var(--accent)]"
+                            style={{
+                                background: 'var(--bg-secondary)',
+                                border: '1px solid var(--border-default)',
+                                color: 'var(--text-primary)',
+                            }}
+                        >
+                            {transcriptionModelsFor(provider).map((m) => (
+                                <option key={m.id} value={m.id} style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                                    {m.label} ({m.desc})
+                                </option>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3" style={{ color: 'var(--text-muted)' }}>
+                            <ChevronDown size={14} />
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
             {/* Start button */}
             {file && processingState === 'idle' && (
                 <motion.div
@@ -316,12 +362,12 @@ export default function UploadZone() {
                     <div className="p-4 rounded-xl border transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-subtle)' }}>
                         <div className="flex items-center gap-2 mb-2" style={{ color: '#34d399' }}>
                             <Zap size={16} />
-                            <span className="text-xs font-semibold uppercase tracking-wider">Whisper + Llama</span>
+                            <span className="text-xs font-semibold uppercase tracking-wider">Whisper + GPT-OSS</span>
                         </div>
                         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                             {locale === 'es'
-                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa Whisper V3 Turbo + Llama 3.'
-                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses Whisper V3 Turbo + Llama 3.'}
+                                ? 'Ideal para clases estándar (< 1h). Muy rápido y preciso con timestamps exactos. Usa Whisper V3 Turbo + GPT-OSS 120B.'
+                                : 'Ideal for standard lectures (< 1h). Very fast and precise with exact timestamps. Uses Whisper V3 Turbo + GPT-OSS 120B.'}
                         </p>
                     </div>
 

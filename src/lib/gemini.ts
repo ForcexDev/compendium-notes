@@ -2,22 +2,31 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_UPLOAD_URL = 'https://generativelanguage.googleapis.com/upload/v1beta';
 
 import { getLanguageNameEn } from './languages';
+import { progress, m } from './progress';
+import { stripRepetitionRuns, lastTimestampSeconds, secondsToLabel, tailRepetitionRun } from './text-cleanup';
+import { sleep, fetchWithTimeout, isCancelledError, throwIfCancelled } from './pipeline-control';
+import { sanitizeDuration } from './duration';
 
 // ---------------------------------------------------------------------------
-// Modelos, límites de free tier y cadenas de fallback
+// Modelos, límites de free tier y cadenas
 // Actualiza esta tabla si Google cambia los límites o los IDs de modelo
 // ---------------------------------------------------------------------------
 
 /**
- * Límites reales del FREE TIER por modelo (AI Studio / Gemini API).
- *  - rpm: requests por minuto
- *  - tpm: tokens por minuto (input + output)
- *  - rpd: requests por día
- *  - maxOutput: tokens máximos de salida que acepta el modelo
+ * Límites del FREE TIER por modelo (AI Studio / Gemini API).
+ *  - rpm: requests por minuto · tpm: tokens por minuto · rpd: requests por día
+ *  - maxOutput: tokens máximos de salida del modelo
  *
- * Los Flash Lite tienen 15 RPM / 500 RPD → son los únicos viables para
- * transcripción por chunks (varias requests seguidas por audio).
- * Los Flash tienen 5 RPM / 20 RPD → sólo sirven como red de seguridad.
+ * El reparto de papeles sale directamente de esta tabla:
+ *  - Flash Lite (15 RPM · 500 RPD) es lo ÚNICO que aguanta N peticiones
+ *    seguidas: transcribe todos los fragmentos.
+ *  - Flash (5 RPM · 20 RPD) sólo da para una petición grande: redacta.
+ *
+ * Aquí NO hay ningún Pro, y no es un olvido: en el free tier de la API de
+ * Gemini los Pro salen con cuota CERO (2.5 Pro y 3.1 Pro, 0/0 en RPM, TPM y
+ * RPD). Se probó a dejarlos como último recurso y lo único que podían aportar
+ * era un 429 al final de una espera. Si algún día vuelven a tener cuota, se
+ * añaden aquí y a la cadena de redacción.
  */
 export const GEMINI_MODEL_LIMITS: Record<string, { rpm: number; tpm: number; rpd: number; maxOutput: number }> = {
     'gemini-3.5-flash-lite':  { rpm: 15, tpm: 250_000, rpd: 500, maxOutput: 65536 },
@@ -34,44 +43,90 @@ const DEFAULT_MODEL_LIMITS = { rpm: 5, tpm: 250_000, rpd: 20, maxOutput: 8192 };
 const limitsFor = (model: string) => GEMINI_MODEL_LIMITS[model] ?? DEFAULT_MODEL_LIMITS;
 
 /**
- * Cadena única de fallback: primario → fallback 1 → ... → último recurso.
- * El orden importa y está pensado para el free tier:
- *   1. 3.5 Flash Lite  · 15 RPM · 250K TPM · 500 RPD  ← primario
- *   2. 3.1 Flash Lite  · 15 RPM · 250K TPM · 500 RPD  ← fallback principal
- *   3. 3.7 Flash       ·  5 RPM · 250K TPM ·  20 RPD
- *   4. 3.6 Flash       ·  5 RPM · 250K TPM ·  20 RPD
- *   5. 3.5 Flash       ·  5 RPM · 250K TPM ·  20 RPD
- *   6. 3 Flash Preview ·  5 RPM · 250K TPM ·  20 RPD
+ * TRANSCRIPCIÓN — sólo Flash Lite.
+ *
+ * Antes la cadena de transcripción caía a los Flash cuando los Lite fallaban,
+ * y ahí estaba el peor fallo del sistema: un audio de dos horas son doce
+ * fragmentos, y los Flash admiten VEINTE peticiones AL DÍA. Bastaban dos
+ * audios largos para dejar la cuenta sin modelos hasta el día siguiente, justo
+ * en el paso que más peticiones consume y menos calidad necesita.
  */
-export const GEMINI_MODEL_CHAIN = [
+export const GEMINI_TRANSCRIPTION_CHAIN = [
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
+] as const;
+
+/**
+ * REDACCIÓN — un solo Flash, una sola petición.
+ *
+ * Aquí sí compensa el modelo grande: es UNA petición por audio (cabe de sobra
+ * en 20 RPD) y es la que decide la calidad de lo que el usuario acaba leyendo.
+ */
+export const GEMINI_ASSEMBLY_CHAIN = [
     'gemini-3.7-flash',
     'gemini-3.6-flash',
     'gemini-3.5-flash',
     'gemini-3-flash-preview',
 ] as const;
 
-export const TRANSCRIPTION_FALLBACK_MODELS = GEMINI_MODEL_CHAIN;
-export const ORGANIZATION_FALLBACK_MODELS = GEMINI_MODEL_CHAIN;
+/**
+ * ÚLTIMO RECURSO de la redacción: los mismos Flash Lite que transcriben.
+ *
+ * Los Flash tienen 20 peticiones al día CADA UNO, y se gastan. Cuando los
+ * cuatro se agotan —cosa que pasa antes de lo que parece si se procesan
+ * varios audios en un día— la alternativa no es un Pro (no hay cuota gratis
+ * para ninguno), sino redactar con un Lite: los apuntes salen algo menos
+ * finos, pero salen. Antes, ese mismo caso terminaba en pantalla de error con
+ * la transcripción hecha y tirada a la basura.
+ */
+export const GEMINI_NOTES_FALLBACK_CHAIN = GEMINI_TRANSCRIPTION_CHAIN;
+
+/** Compat: la cadena "de transcripción" es la que se recorre por defecto. */
+export const GEMINI_MODEL_CHAIN = GEMINI_TRANSCRIPTION_CHAIN;
+export const TRANSCRIPTION_FALLBACK_MODELS = GEMINI_TRANSCRIPTION_CHAIN;
+export const ORGANIZATION_FALLBACK_MODELS = GEMINI_ASSEMBLY_CHAIN;
 
 /**
- * Tokens máximos de OUTPUT para operaciones de ORGANIZACIÓN.
+ * Cadena de modelos que empieza por el elegido.
+ *
+ * Elegir un modelo significa "prueba este primero", no "muere con este". La
+ * versión anterior lo interpretaba de la segunda forma: con un modelo fijo se
+ * hacían 3 intentos y se abandonaba, sin tocar el resto. Un 503 es del
+ * servidor, no del modelo, y los demás suelen estar sanos.
+ */
+export function chainStartingWith(model: string | undefined, chain: readonly string[]): string[] {
+    if (!model || model === 'auto') return [...chain];
+    return [model, ...chain.filter((m) => m !== model)];
+}
+
+/** Lo que ofrece el selector: transcribir es cosa de los Lite. */
+export const GEMINI_TRANSCRIPTION_MODELS = [
+    { id: 'auto', label: 'Auto', desc: '3.5 Flash Lite + respaldo' },
+    { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite', desc: '15 RPM · 500 RPD' },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', desc: '15 RPM · 500 RPD' },
+] as const;
+
+/**
+ * Tokens máximos de OUTPUT para operaciones de REDACCIÓN.
  * Derivado de la tabla de límites: se aprovecha el máximo real del modelo.
  */
 export const ORGANIZATION_MAX_OUTPUT_TOKENS: Record<string, number> = Object.fromEntries(
     Object.entries(GEMINI_MODEL_LIMITS).map(([model, l]) => [model, l.maxOutput])
 );
 
-/**
- * Tokens máximos de OUTPUT para TRANSCRIPCIÓN.
- * Un chunk de 20 min puede rondar los 4-7K tokens de texto, pero los modelos
- * 3.x son modelos de razonamiento: los tokens de "thinking" también consumen
- * presupuesto de salida, así que 8192 provocaba cortes por MAX_TOKENS.
- * maxOutputTokens es un TOPE, no una reserva — subirlo no gasta cuota extra
- * (el TPM cuenta tokens realmente generados), sólo evita truncados.
- */
+/** Tokens máximos de OUTPUT para TRANSCRIPCIÓN. */
 export const TRANSCRIPTION_MAX_OUTPUT_TOKENS = 32768;
+
+/**
+ * Presupuesto de tokens de salida ajustado a la duración del audio.
+ * ~300 tokens por minuto de habla, con la mitad de margen encima.
+ */
+export function outputTokenBudget(durationSeconds: number, maxOutput: number = TRANSCRIPTION_MAX_OUTPUT_TOKENS): number {
+    const minutes = Math.max(1, durationSeconds / 60);
+    const estimatedTokens = Math.ceil(minutes * 300);
+    const calculated = Math.max(4096, Math.ceil(estimatedTokens * 1.5));
+    return Math.min(calculated, maxOutput);
+}
 
 /**
  * Coste aproximado en tokens de input por segundo de audio en Gemini (~32 tok/s).
@@ -83,17 +138,49 @@ const AUDIO_INPUT_TOKENS_PER_SECOND = 32;
 const TPM_SAFETY_FACTOR = 0.8;
 
 /**
- * Cuántos chunks se pueden transcribir en paralelo sin superar RPM ni TPM.
+ * Techo de simultaneidad que NO se puede rebasar sin comerse un 429: el mínimo
+ * entre lo que permite el RPM y lo que permite el TPM.
  *
- * Un chunk de 20 min ≈ 1200 s × 32 tok/s ≈ 38.4K tokens de input. Con 250K TPM
- * eso da ~5 chunks simultáneos como máximo; antes se lanzaban TODOS a la vez
- * con Promise.all, lo que garantizaba un 429 en audios de más de ~1.5 h.
+ * Un fragmento de 10 min ≈ 600 s × 32 tok/s ≈ 19K tokens de entrada, más el
+ * presupuesto de salida. Con 250K TPM salen ~8 simultáneos; con los antiguos
+ * fragmentos de 20 min eran 5.
  */
 export function maxParallelChunks(model: string, chunkSeconds: number): number {
     const l = limitsFor(model);
-    const tokensPerChunk = Math.max(1, chunkSeconds * AUDIO_INPUT_TOKENS_PER_SECOND + TRANSCRIPTION_MAX_OUTPUT_TOKENS);
+    const outputBudget = outputTokenBudget(chunkSeconds, TRANSCRIPTION_MAX_OUTPUT_TOKENS);
+    const tokensPerChunk = Math.max(1, chunkSeconds * AUDIO_INPUT_TOKENS_PER_SECOND + outputBudget);
     const byTpm = Math.floor((l.tpm * TPM_SAFETY_FACTOR) / tokensPerChunk);
     return Math.max(1, Math.min(l.rpm, byTpm));
+}
+
+/**
+ * Simultaneidad en automático. Deliberadamente por debajo del techo: cada
+ * reintento es una petición más que no estaba en la cuenta, y una tanda que
+ * roza el límite convierte cualquier reintento en un 429 en cadena.
+ */
+export const AUTO_CONCURRENCY_CAP = 4;
+/** Lo máximo que se le deja elegir a mano a quien quiera apretar. */
+export const MAX_USER_CONCURRENCY = 8;
+
+/**
+ * Cuántos fragmentos se lanzan a la vez.
+ *
+ * `requested` es lo que pidió el usuario (0 o undefined = automático). Se
+ * respeta salvo que se salga del techo real de RPM/TPM, porque pasar de ahí no
+ * es "ir más rápido", es garantizar 429s y acabar tardando más.
+ */
+export function resolveConcurrency(
+    model: string,
+    chunkSeconds: number,
+    chunkCount: number,
+    requested?: number,
+): { value: number; capped: boolean; ceiling: number } {
+    const ceiling = maxParallelChunks(model, chunkSeconds);
+    const wanted = requested && requested > 0
+        ? Math.min(requested, MAX_USER_CONCURRENCY)
+        : Math.min(ceiling, AUTO_CONCURRENCY_CAP);
+    const value = Math.max(1, Math.min(wanted, ceiling, chunkCount));
+    return { value, capped: wanted > ceiling, ceiling };
 }
 
 /**
@@ -105,6 +192,8 @@ export function maxParallelChunks(model: string, chunkSeconds: number): number {
  *  - CHAIN_RETRY_DELAY_MS: espera entre pasadas de la cadena.
  */
 export const MAX_RETRIES_PER_MODEL = 3;
+/** Intentos de subida de un mismo audio antes de darlo por perdido. */
+const MAX_UPLOAD_ATTEMPTS = 2;
 export const MAX_CHAIN_PASSES = 2;
 const CHAIN_RETRY_DELAY_MS = 15_000;
 
@@ -118,11 +207,19 @@ const MAX_BACKOFF_MS = 60_000;
 const OVERLOAD_STATUSES = new Set([500, 502, 503, 504]);
 
 /**
- * Umbral de duración para decidir la estrategia de transcripción:
- *   ≤ 20 min → transcribeWithGemini       (1 chunk, 1 request directo)
- *   > 20 min → transcribeWithGeminiChunked (N chunks de 20 min, en paralelo limitado)
+ * Duración de cada fragmento, en minutos, y umbral para trocear.
+ *
+ * Bajó de 20 a 10 minutos. Un fragmento es una tirada del modelo sin red: a los
+ * 20 minutos la transcripción se degrada por el final (salta trozos, se
+ * enrolla en bucles, se queda sin tokens) y un fallo se lleva por delante 20
+ * minutos de audio. Con 10 minutos hay el doble de peticiones —irrelevante con
+ * 500 RPD y 15 RPM—, el doble de resolución en la barra de progreso, y lo que
+ * se pierde cuando algo sale mal es la mitad.
  */
-export const DURATION_THRESHOLD_CHUNKING = 20;
+export const CHUNK_SIZE_MINUTES = 10;
+export const DURATION_THRESHOLD_CHUNKING = CHUNK_SIZE_MINUTES;
+/** Solape entre fragmentos: suficiente para coser la frase partida sin duplicar. */
+export const CHUNK_OVERLAP_SECONDS = 15;
 
 /**
  * Ajustar todos los timestamps en una transcripción sumando un offset en minutos
@@ -327,7 +424,20 @@ function calculateSimilarity(text1: string, text2: string): number {
  *  - 429 RPD (cuota diaria agotada) o >3 reintentos: pasa al SIGUIENTE modelo de la cadena
  *  - Cualquier otro error HTTP: lanza inmediatamente
  */
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Marca un error como definitivo: no se reintenta, no se cambia de modelo y,
+ * sobre todo, no se le propone al usuario gastar la cuota del Pro por él. Una
+ * API Key inválida falla igual en todos los modelos del catálogo.
+ */
+function definitive<E extends Error>(err: E): E {
+    (err as any).definitive = true;
+    return err;
+}
+
+export function isDefinitiveError(e: unknown): boolean {
+    return (e as any)?.definitive === true;
+}
 
 /** Backoff exponencial con jitter para el intento n (0-indexado). */
 const backoffMs = (attempt: number) => Math.min(Math.pow(2, attempt + 1) * 1000 + Math.random() * 1500, MAX_BACKOFF_MS);
@@ -336,6 +446,43 @@ const backoffMs = (attempt: number) => Math.min(Math.pow(2, attempt + 1) * 1000 
  * Extraer el retryDelay que devuelve la API en los errores 429 (RetryInfo).
  * Es mucho más fiable que un backoff a ciegas.
  */
+/**
+ * Plazos de red. Generosos —transcribir un fragmento lleva minutos— pero
+ * finitos: sin ellos, una conexión que el servidor abandona en silencio deja el
+ * proceso esperando para siempre.
+ */
+const TIMEOUT_GENERATE_MS = 600_000;   // 10 min: transcripción u organización
+const TIMEOUT_UPLOAD_START_MS = 60_000;
+const TIMEOUT_UPLOAD_STATUS_MS = 30_000;
+/** Silencio máximo tolerado DENTRO de un stream ya abierto. */
+const STREAM_STALL_MS = 90_000;
+
+/**
+ * `reader.read()` con plazo: la promesa de un stream que se queda mudo no se
+ * rechaza sola, y sin esto una respuesta cortada a medias dejaba la lectura
+ * esperando para siempre.
+ */
+async function readWithDeadline<T>(
+    reader: ReadableStreamDefaultReader<T>,
+    ms: number,
+    label: string,
+): Promise<{ done: boolean; value?: T }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            reader.read(),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () => reject(new Error(`${label} dejó de enviar datos durante ${Math.round(ms / 1000)}s`)),
+                    ms,
+                );
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 function parseRetryDelayMs(err: any): number | null {
     const details = err?.error?.details;
     if (!Array.isArray(details)) return null;
@@ -373,40 +520,327 @@ function isDailyQuotaError(err: any): boolean {
     return msg.includes('per day') || msg.includes('perday') || msg.includes('daily limit');
 }
 
+/**
+ * Lectura de la respuesta de `streamGenerateContent`.
+ *
+ * Gemini devuelve SSE: una línea `data:` por trozo generado. Leerlo a trozos
+ * en vez de esperar al final es lo que permite que la barra avance DENTRO de
+ * una petición; sin esto, un fragmento de diez minutos pasaba de 0 a 100 de
+ * golpe tras minuto y medio de pantalla congelada.
+ *
+ * Acepta también una respuesta JSON entera (`generateContent` clásico): así el
+ * mismo lector sirve si alguna vez hay que volver al endpoint no-streaming.
+ */
+async function readGeminiStream(
+    response: Response,
+    label: string,
+    /** Devolver `false` corta la lectura: el resto de la respuesta no sirve. */
+    onDelta?: (accumulated: string) => boolean | void,
+): Promise<{ text: string; finishReason: string | null; tokensUsed: number }> {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error(`${label} devolvió una respuesta sin cuerpo`);
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let raw = '';
+    let text = '';
+    let finishReason: string | null = null;
+    let tokensUsed = 0;
+    let sawSSE = false;
+    let stop = false;
+
+    const absorb = (payload: string) => {
+        let parsed: any;
+        try {
+            parsed = JSON.parse(payload);
+        } catch {
+            return false;   // trozo incompleto: se recompone en la vuelta siguiente
+        }
+        const candidate = parsed?.candidates?.[0];
+        const parts = candidate?.content?.parts;
+        if (Array.isArray(parts)) {
+            for (const part of parts) {
+                if (typeof part?.text === 'string') text += part.text;
+            }
+        }
+        if (candidate?.finishReason) finishReason = candidate.finishReason;
+        const count = parsed?.usageMetadata?.candidatesTokenCount;
+        if (typeof count === 'number' && count > tokensUsed) tokensUsed = count;
+        return true;
+    };
+
+    while (!stop) {
+        throwIfCancelled();
+        const { done, value } = await readWithDeadline(reader, STREAM_STALL_MS, label);
+        if (done) break;
+        const piece = decoder.decode(value, { stream: true });
+        raw += piece;
+        buffer += piece;
+
+        let nl: number;
+        while ((nl = buffer.indexOf('\n')) !== -1) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line.startsWith('data:')) continue;
+            sawSSE = true;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            if (absorb(payload) && onDelta?.(text) === false) { stop = true; break; }
+        }
+    }
+
+    if (stop) await reader.cancel().catch(() => { /* ya cerrado */ });
+
+    const rest = buffer.trim();
+    if (sawSSE) {
+        if (rest.startsWith('data:')) {
+            const payload = rest.slice(5).trim();
+            if (payload && payload !== '[DONE]' && absorb(payload)) onDelta?.(text);
+        }
+    } else if (raw.trim()) {
+        // No era SSE: un único JSON (o un array de ellos, que es lo que
+        // devuelve streamGenerateContent sin `alt=sse`).
+        const body = raw.trim();
+        try {
+            const parsed = JSON.parse(body);
+            for (const piece of Array.isArray(parsed) ? parsed : [parsed]) {
+                absorb(JSON.stringify(piece));
+            }
+            onDelta?.(text);
+        } catch {
+            throw new Error(`${label} devolvió una respuesta ilegible`);
+        }
+    }
+
+    return { text, finishReason, tokensUsed };
+}
+
+/**
+ * Salud compartida de los modelos (cuarentena por saturación).
+ *
+ * Sin esto, una caída de Google se convertía en una tormenta nuestra. Medido
+ * en una caída real de `3.5-flash-lite`: siete fragmentos en marcha, seis a la
+ * vez, y CADA UNO descubriendo por su cuenta que el modelo estaba caído —tres
+ * intentos, cambio de modelo, otros tres— hasta ~70 peticiones contra un
+ * servicio que devolvía 503 a todas. El `sharedModelIndex` no llegaba a
+ * tiempo: sólo ayuda a los fragmentos que EMPIEZAN más tarde, y con seis en
+ * paralelo todos habían empezado ya.
+ *
+ * Aquí, el primero que se estrella deja el modelo en cuarentena y los demás lo
+ * saltan sin gastar ni una petición. Si toda la cadena está en cuarentena, los
+ * trabajadores esperan JUNTOS a que expire la más cercana, en vez de cada uno
+ * por su lado.
+ */
+const OVERLOAD_COOLDOWN_STEPS_MS = [5_000, 20_000, 45_000, 90_000];
+/** Esperas encadenadas a que se despeje la cadena entera antes de rendirse. */
+const MAX_COOLDOWN_WAITS = 3;
+
+const modelHealth = new Map<string, { until: number; strikes: number }>();
+
+/** Milisegundos que le quedan a un modelo en cuarentena (0 si está sano). */
+export function modelCooldownMs(model: string, now = Date.now()): number {
+    const h = modelHealth.get(model);
+    if (!h) return 0;
+    return Math.max(0, h.until - now);
+}
+
+/**
+ * Aparta un modelo un rato. Cada RONDA fallida lo aparta más tiempo.
+ *
+ * El primer 503 basta para apartarlo: si el servicio está caído, la respuesta
+ * correcta es dejar de mandarle cosas, no confirmarlo veinte veces. El primer
+ * apartado es corto (5 s) porque un 503 suelto también puede ser un hipo.
+ *
+ * Los fallos que llegan MIENTRAS ya está apartado no suben el castigo: son la
+ * misma tanda de peticiones que salió antes de la cuarentena, no una recaída.
+ * Sin esta distinción, seis fragmentos en paralelo saltaban de 5 s a 90 s de
+ * golpe por un único bache.
+ */
+export function coolDownModel(model: string): number {
+    const now = Date.now();
+    const prev = modelHealth.get(model);
+    const remaining = prev ? prev.until - now : 0;
+    if (remaining > 0) return remaining;
+
+    const strikes = Math.min((prev?.strikes ?? 0) + 1, OVERLOAD_COOLDOWN_STEPS_MS.length);
+    const ms = OVERLOAD_COOLDOWN_STEPS_MS[strikes - 1];
+    modelHealth.set(model, { until: now + ms, strikes });
+    return ms;
+}
+
+/** Una respuesta buena borra el historial: la caída pasó. */
+function markModelHealthy(model: string): void {
+    modelHealth.delete(model);
+}
+
+/**
+ * ¿Se ha renunciado al streaming en esta ejecución?
+ *
+ * Pedir la respuesta en streaming y pedirla entera son dos rutas distintas
+ * dentro de Google, y pueden estar una bien y la otra saturada. Cuando el
+ * streaming falla y la petición equivalente sin streaming funciona, seguir
+ * insistiendo en la primera es tirar el audio a la basura por una barra de
+ * progreso más fina.
+ */
+let streamingDisabled = false;
+
+export function isStreamingDisabled(): boolean {
+    return streamingDisabled;
+}
+
+/** Empieza de cero. La llama cada ejecución nueva y las pruebas. */
+export function resetModelHealth(): void {
+    modelHealth.clear();
+    streamingDisabled = false;
+}
+
+const generateUrl = (model: string, apiKey: string, stream: boolean) => stream
+    ? `${GEMINI_API_URL}/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
+    : `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`;
+
+interface GenerateOptions {
+    /** Modelo que pidió el usuario: se avisa una sola vez si hay que abandonarlo. */
+    preferredModel?: string;
+    /** Texto acumulado según llega. Devolver `false` corta la respuesta. */
+    onDelta?: (accumulated: string) => boolean | void;
+    /** Se llama al empezar cada intento: sirve para contar peticiones reales. */
+    onAttempt?: (model: string, attempt: number) => void;
+}
+
+interface GenerateResult {
+    text: string;
+    finishReason: string | null;
+    tokensUsed: number;
+    modelUsed: string;
+    modelIndex: number;
+}
+
+/**
+ * Repite la petición sin streaming, una sola vez.
+ *
+ * Devuelve el resultado si la ruta clásica sí funciona (y deja apagado el
+ * streaming para lo que queda de ejecución), o `null` si también falla — que
+ * es la señal de que el problema es el modelo y no la ruta.
+ */
+async function tryWithoutStreaming(
+    model: string,
+    apiKey: string,
+    buildBody: (model: string) => object,
+    label: string,
+    onDelta?: (accumulated: string) => boolean | void,
+): Promise<{ text: string; finishReason: string | null; tokensUsed: number } | null> {
+    try {
+        const res = await fetchWithTimeout(
+            generateUrl(model, apiKey, false),
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(buildBody(model)),
+            },
+            { timeoutMs: TIMEOUT_GENERATE_MS, label: `El modelo ${model}` },
+        );
+        if (!res.ok) return null;
+
+        const out = await readGeminiStream(res, `El modelo ${model}`, onDelta);
+        if (!out.text) return null;
+
+        streamingDisabled = true;
+        console.warn(`[${label}] ↩️  El streaming da 503 pero la petición normal responde: se desactiva el streaming`);
+        progress.pushEvent('warn', m(
+            'La conexión en directo con Gemini falla: se pide la respuesta entera (el avance se verá a saltos)',
+            'The live connection to Gemini is failing: asking for the whole response instead (progress will jump)',
+        ));
+        return out;
+    } catch (e: any) {
+        if (isCancelledError(e)) throw e;
+        return null;
+    }
+}
+
 async function geminiGenerateWithFallback(
     models: readonly string[],
     apiKey: string,
     buildBody: (model: string) => object,  // body builder — recibe el modelo activo y retorna el body completo
     label: string = 'Gemini',
-    startModelIndex: number = 0
-): Promise<{ data: any; modelUsed: string; modelIndex: number }> {
+    startModelIndex: number = 0,
+    options: GenerateOptions = {}
+): Promise<GenerateResult> {
+    const { preferredModel, onDelta, onAttempt } = options;
+    /** Aviso, una sola vez, de que se abandona el modelo que pidió el usuario. */
+    let warnedAboutPreferred = false;
+    const announceSwitch = (from: string, to: string, reason: string) => {
+        if (!preferredModel || from !== preferredModel || warnedAboutPreferred) return;
+        warnedAboutPreferred = true;
+        progress.pushEvent('warn', m(
+            `${from} sigue fallando (${reason}); se continúa con ${to}`,
+            `${from} keeps failing (${reason}); continuing with ${to}`,
+        ));
+    };
     // Modelos con cuota DIARIA agotada: no tiene sentido volver a intentarlos hoy.
     const dailyExhausted = new Set<string>();
     let lastError: Error | null = null;
     let sawOverload = false;
+    const maxPasses = MAX_CHAIN_PASSES;
 
-    for (let pass = 0; pass < MAX_CHAIN_PASSES; pass++) {
+    let cooldownWaits = 0;
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+        /** ¿Se ha llegado a mandar algo en esta pasada? */
+        let triedSomething = false;
+        /** Cuánto falta para que se despierte el primer modelo en cuarentena. */
+        let soonestCooldown = Infinity;
+
         for (let mi = startModelIndex; mi < models.length; mi++) {
             const model = models[mi];
             if (dailyExhausted.has(model)) continue;
 
+            // Otro fragmento ya se estrelló contra este modelo hace nada: no
+            // se repite el experimento, se pasa al siguiente.
+            const cooling = modelCooldownMs(model);
+            if (cooling > 0) {
+                soonestCooldown = Math.min(soonestCooldown, cooling);
+                console.log(`[${label}] 🧊 ${model} en cuarentena (${Math.round(cooling / 1000)}s) — se salta`);
+                continue;
+            }
+            triedSomething = true;
+
             for (let attempt = 0; attempt < MAX_RETRIES_PER_MODEL; attempt++) {
+                throwIfCancelled();
+                // Mientras esperábamos, otro fragmento puede haber apartado
+                // este modelo. Insistir sería mandar una petición que ya
+                // sabemos que va a fallar.
+                if (attempt > 0 && modelCooldownMs(model) > 0) {
+                    soonestCooldown = Math.min(soonestCooldown, modelCooldownMs(model));
+                    // Abandonar el modelo que el usuario eligió se avisa aquí
+                    // también: la cuarentena es otra forma de abandonarlo, y
+                    // callárselo sería justo lo contrario de lo que pidió.
+                    const next = models.slice(mi + 1).find((x) => !dailyExhausted.has(x) && modelCooldownMs(x) === 0);
+                    if (next) announceSwitch(model, next, m('saturado', 'overloaded'));
+                    break;
+                }
                 const isLastAttempt = attempt >= MAX_RETRIES_PER_MODEL - 1;
                 let response: Response;
 
                 // --- Fallo de red (sin respuesta HTTP) → reintentable ---
                 try {
-                    response = await fetch(
-                        `${GEMINI_API_URL}/models/${model}:generateContent?key=${apiKey}`,
+                    onAttempt?.(model, attempt + 1);
+                    response = await fetchWithTimeout(
+                        generateUrl(model, apiKey, !streamingDisabled),
                         {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(buildBody(model)),
-                        }
+                        },
+                        { timeoutMs: TIMEOUT_GENERATE_MS, label: `El modelo ${model}` }
                     );
                 } catch (e: any) {
+                    if (isCancelledError(e)) throw e;
                     lastError = new Error(`Fallo de red: ${e?.message || e}`);
+                    progress.pushEvent('warn', `Fallo de red en ${model}: ${e?.message || e}`);
                     if (isLastAttempt) {
+                        coolDownModel(model);
+                        const siguiente = models.slice(mi + 1).find((x) => !dailyExhausted.has(x));
+                        if (siguiente) announceSwitch(model, siguiente, m('fallo de red', 'network failure'));
                         console.warn(`[${label}] ⚠️  ${model}: network failures → next model`);
                         break;
                     }
@@ -418,7 +852,21 @@ async function geminiGenerateWithFallback(
                     if (mi > startModelIndex || pass > 0) {
                         console.log(`[${label}] ✅ Success with fallback model: ${model}`);
                     }
-                    return { data: await response.json(), modelUsed: model, modelIndex: mi };
+                    // Un stream que se corta a media respuesta es un fallo de
+                    // red como cualquier otro: se reintenta en vez de devolver
+                    // media transcripción como si estuviera entera.
+                    try {
+                        const out = await readGeminiStream(response, `El modelo ${model}`, onDelta);
+                        markModelHealthy(model);
+                        return { ...out, modelUsed: model, modelIndex: mi };
+                    } catch (e: any) {
+                        if (isCancelledError(e)) throw e;
+                        lastError = new Error(`Stream interrumpido: ${e?.message || e}`);
+                        progress.pushEvent('warn', `Respuesta interrumpida en ${model}: ${e?.message || e}`);
+                        if (isLastAttempt) break;
+                        await sleep(backoffMs(attempt));
+                        continue;
+                    }
                 }
 
                 const err = await response.json().catch(() => ({}));
@@ -427,8 +875,10 @@ async function geminiGenerateWithFallback(
 
                 // --- Cuota diaria (RPD) agotada → esperar no sirve, saltar modelo ---
                 if (response.status === 429 && isDailyQuotaError(err)) {
+                    progress.pushEvent('warn', `Cuota diaria (RPD) agotada en ${model}`);
                     dailyExhausted.add(model);
-                    const next = models.slice(mi + 1).find(m => !dailyExhausted.has(m));
+                    const next = models.slice(mi + 1).find(x => !dailyExhausted.has(x));
+                    if (next) announceSwitch(model, next, m('cuota diaria agotada', 'daily quota exhausted'));
                     console.warn(`[${label}] ⚠️  ${model}: daily quota (RPD) exhausted → ${next ? `switching to ${next}` : 'no models left'}`);
                     break;
                 }
@@ -437,20 +887,47 @@ async function geminiGenerateWithFallback(
                 const rateLimited = response.status === 429;
 
                 // --- Error real (400 body inválido, 403 key mala, 404 modelo inexistente…) ---
+                // Se marca como definitivo: cambiar de modelo, esperar o subir
+                // a uno más potente no arregla una API Key mala.
                 if (!overloaded && !rateLimited) {
-                    throw new Error(apiMessage);
+                    throw definitive(new Error(apiMessage));
                 }
 
-                if (overloaded) sawOverload = true;
+                // ¿Es el modelo el que está saturado, o sólo la ruta de
+                // streaming? Se comprueba en vez de suponerlo: una sola
+                // petición equivalente sin streaming lo dice. Si esa sí
+                // responde, el resto de la ejecución va por ahí.
+                if (overloaded && !streamingDisabled) {
+                    const probe = await tryWithoutStreaming(model, apiKey, buildBody, label, onDelta);
+                    if (probe) {
+                        markModelHealthy(model);
+                        return { ...probe, modelUsed: model, modelIndex: mi };
+                    }
+                }
+
+                if (overloaded) {
+                    sawOverload = true;
+                    // Basta un 503 para apartarlo: los demás fragmentos no
+                    // tienen por qué volver a comprobar que sigue caído.
+                    //
+                    // Sólo la saturación (5xx) aparta al modelo. Un 429 NO: ahí
+                    // el modelo está perfectamente y el que va rápido somos
+                    // nosotros, así que lo que toca es esperar el `retryDelay`
+                    // que manda la propia API y volver — apartarlo tiraba a la
+                    // basura el reintento que sí habría funcionado.
+                    coolDownModel(model);
+                }
 
                 // --- Agotados los reintentos de este modelo → siguiente de la cadena ---
                 if (isLastAttempt) {
                     const reason = overloaded ? 'overloaded (high demand)' : 'rate limited';
-                    const next = models.slice(mi + 1).find(m => !dailyExhausted.has(m));
+                    console.warn(`[${label}] 🧊 ${model} apartado ${Math.round(modelCooldownMs(model) / 1000)}s`);
+                    const next = models.slice(mi + 1).find(x => !dailyExhausted.has(x));
+                    if (next) announceSwitch(model, next, overloaded ? m('saturado', 'overloaded') : m('límite de peticiones', 'rate limited'));
                     if (next) {
                         console.warn(`[${label}] ⚠️  ${model}: ${reason} after ${MAX_RETRIES_PER_MODEL} attempts → switching to ${next}`);
                     } else {
-                        console.error(`[${label}] ❌ ${model}: ${reason} — end of chain (pass ${pass + 1}/${MAX_CHAIN_PASSES})`);
+                        console.error(`[${label}] ❌ ${model}: ${reason} — end of chain (pass ${pass + 1}/${maxPasses})`);
                     }
                     break;
                 }
@@ -459,17 +936,38 @@ async function geminiGenerateWithFallback(
                 const suggested = parseRetryDelayMs(err);
                 const waitMs = Math.min(suggested ?? backoffMs(attempt), MAX_BACKOFF_MS);
                 const what = overloaded ? `Overloaded (${response.status})` : 'Rate limited';
+                progress.pushEvent('retry', `${what} en ${model} — esperando ${(waitMs / 1000).toFixed(0)}s`);
+                progress.beginWait(Date.now() + waitMs, `${what} en ${model}`);
                 console.log(`[${label}] ⏳ ${what} on ${model} (attempt ${attempt + 1}/${MAX_RETRIES_PER_MODEL}), waiting ${(waitMs / 1000).toFixed(1)}s${suggested ? ' (API retryDelay)' : ''}...`);
                 await sleep(waitMs);
+                progress.endWait();
             }
         }
 
         // Fin de una pasada completa por la cadena.
         const remaining = models.slice(startModelIndex).filter(m => !dailyExhausted.has(m));
         if (remaining.length === 0) break;           // todo agotado por cuota diaria: no insistir
-        if (pass < MAX_CHAIN_PASSES - 1) {
+
+        // Toda la cadena en cuarentena: se espera UNA vez, y todos los
+        // fragmentos que estén en las mismas convergen en la misma espera en
+        // lugar de aporrear el servicio cada uno por su cuenta.
+        if (!triedSomething && Number.isFinite(soonestCooldown)) {
+            if (++cooldownWaits > MAX_COOLDOWN_WAITS) break;
+            const waitMs = Math.min(soonestCooldown + 500, MAX_BACKOFF_MS);
+            console.warn(`[${label}] 🧊 Toda la cadena en cuarentena — esperando ${(waitMs / 1000).toFixed(0)}s`);
+            progress.beginWait(Date.now() + waitMs, m(
+                'El servicio de Google está saturado',
+                'Google’s service is overloaded',
+            ));
+            await sleep(waitMs);
+            progress.endWait();
+            pass--;   // esperar no consume una pasada: no se ha probado nada
+            continue;
+        }
+
+        if (pass < maxPasses - 1) {
             const waitMs = CHAIN_RETRY_DELAY_MS + Math.random() * 5000;
-            console.warn(`[${label}] 🔁 Whole chain busy — waiting ${(waitMs / 1000).toFixed(0)}s and retrying (pass ${pass + 2}/${MAX_CHAIN_PASSES})`);
+            console.warn(`[${label}] 🔁 Whole chain busy — waiting ${(waitMs / 1000).toFixed(0)}s and retrying (pass ${pass + 2}/${maxPasses})`);
             await sleep(waitMs);
         }
     }
@@ -496,7 +994,7 @@ async function uploadToGemini(file: File, apiKey: string, onProgress?: (p: numbe
     if (mimeType === 'audio/x-wav') mimeType = 'audio/wav';
 
     // Paso 1: Iniciar upload resumable
-    const startRes = await fetch(`${GEMINI_UPLOAD_URL}/files?key=${apiKey}`, {
+    const startRes = await fetchWithTimeout(`${GEMINI_UPLOAD_URL}/files?key=${apiKey}`, {
         method: 'POST',
         headers: {
             'X-Goog-Upload-Protocol': 'resumable',
@@ -508,7 +1006,7 @@ async function uploadToGemini(file: File, apiKey: string, onProgress?: (p: numbe
         body: JSON.stringify({
             file: { displayName: file.name },
         }),
-    });
+    }, { timeoutMs: TIMEOUT_UPLOAD_START_MS, label: 'Gemini (inicio de subida)' });
 
     if (!startRes.ok) {
         const err = await startRes.text();
@@ -521,7 +1019,10 @@ async function uploadToGemini(file: File, apiKey: string, onProgress?: (p: numbe
     onProgress?.(0.2);
 
     // Paso 2: Subir bytes
-    const uploadRes = await fetch(uploadUrl, {
+    // El plazo escala con el tamaño: subir 40 MB por una conexión lenta es
+    // legítimo, quedarse parado en el byte 3 durante media hora no.
+    const uploadTimeoutMs = Math.min(30 * 60_000, 120_000 + (file.size / (1024 * 1024)) * 20_000);
+    const uploadRes = await fetchWithTimeout(uploadUrl, {
         method: 'POST',
         headers: {
             'X-Goog-Upload-Offset': '0',
@@ -529,7 +1030,7 @@ async function uploadToGemini(file: File, apiKey: string, onProgress?: (p: numbe
             'Content-Length': String(file.size),
         },
         body: file,
-    });
+    }, { timeoutMs: uploadTimeoutMs, label: 'Gemini (subida del audio)' });
 
     if (!uploadRes.ok) {
         const err = await uploadRes.text();
@@ -549,8 +1050,13 @@ async function uploadToGemini(file: File, apiKey: string, onProgress?: (p: numbe
     console.log(`[Gemini Upload] Waiting for file processing...`);
 
     while (attempts < 120) {
-        const statusRes = await fetch(`${GEMINI_API_URL}/${fileName}?key=${apiKey}`);
-        const statusData = await statusRes.json();
+        throwIfCancelled();
+        const statusRes = await fetchWithTimeout(
+            `${GEMINI_API_URL}/${fileName}?key=${apiKey}`,
+            {},
+            { timeoutMs: TIMEOUT_UPLOAD_STATUS_MS, label: 'Gemini (estado del archivo)' },
+        );
+        const statusData = await statusRes.json().catch(() => ({} as any));
 
         if (statusData.state === 'ACTIVE') {
             console.log('[Gemini Upload] ✅ File ready');
@@ -583,16 +1089,80 @@ interface TranscriptionResult {
 }
 
 /**
- * 🎵 RUTA ESTÁNDAR: Transcribir audio sin chunking (<20 min)
- * Transcripción literal palabra por palabra
+ * Progreso dentro de una transcripción, deducido de los timestamps.
+ *
+ * El modelo va emitiendo `[MM:SS]` conforme avanza por el audio. Ese número es
+ * la única medida honesta de "por dónde va": no es una animación ni una
+ * estimación, es el minuto de grabación que acaba de transcribir.
+ */
+function progressFromTimestamps(text: string, durationSeconds: number): number {
+    if (!(durationSeconds > 0)) return 0;
+    const last = lastTimestampSeconds(text);
+    if (last === null) return 0;
+    return Math.min(0.98, Math.max(0, last / durationSeconds));
+}
+
+/**
+ * Instrucciones de transcripción.
+ *
+ * Se reescribió entero con una idea: cada regla que no impide un fallo
+ * observado es ruido que compite con las que sí. Lo que queda ataca lo que de
+ * verdad rompía las transcripciones — resumir en vez de transcribir, traducir
+ * al idioma del prompt, comentar el audio, atascarse repitiendo una palabra y
+ * dejarse la cola del fragmento sin transcribir.
+ */
+function transcriptionPrompt(chunk?: { index: number; total: number; startSec: number; endSec: number }): string {
+    const dur = chunk ? Math.round((chunk.endSec - chunk.startSec) / 60) : 0;
+
+    const context = chunk
+        ? `This audio is part ${chunk.index + 1} of ${chunk.total} of a longer recording (~${dur} min of audio).
+It starts mid-conversation and may end mid-sentence. That is expected: transcribe exactly what you hear, from the very first word to the very last one. Do not add an intro or a conclusion.
+Timestamps must be relative to THIS audio: the first word is [00:00].`
+        : 'Transcribe the whole recording, from the first word to the last one.';
+
+    return `Transcribe this audio verbatim, in its original spoken language.
+
+${context}
+
+RULES
+1. Verbatim: every sentence that is spoken, word for word. Never summarize, shorten, paraphrase or skip a passage.
+2. Never translate. Write in the language being spoken.
+3. Only the transcript. No preamble, no commentary, no notes about the audio quality, no "[music]" style labels.
+4. Timestamp \`[MM:SS]\` at the start of a line roughly every 30 seconds, and whenever the topic changes. Never mid-sentence. Always in ascending order.
+5. Unintelligible speech: write [inaudible]. Never invent words to fill a gap.
+6. If a word or phrase repeats in the audio, transcribe it once and move on. Never emit the same short phrase more than twice in a row.
+7. Keep going until the audio ends. Do not stop early.
+
+FORMAT
+[00:00] First spoken sentence here.
+[00:31] Next sentences here, continuing naturally.
+
+Begin the transcript now.`;
+}
+
+/** Metadatos opcionales del fragmento al que pertenece esta llamada. */
+export interface ChunkContext {
+    index: number;
+    total: number;
+    startSec: number;
+    endSec: number;
+    /** Avance 0-1 dentro del fragmento, en tiempo real. */
+    onProgress?: (p: number) => void;
+}
+
+/**
+ * 🎵 Transcribe un audio (completo si es corto, o un fragmento de uno largo).
+ * Sube el archivo, lo transcribe en streaming y va publicando por dónde va.
  */
 export async function transcribeWithGemini(
     file: File,
     apiKey: string,
     onProgress?: (progress: number) => void,
     duration?: number,
-    startModelIndex: number = 0
-): Promise<TranscriptionResult & { modelIndex: number }> {
+    startModelIndex: number = 0,
+    model?: string,
+    chunk?: ChunkContext,
+): Promise<TranscriptionResult & { modelIndex: number; modelUsed: string; requests: number }> {
     if (!apiKey) throw new Error('Gemini API Key no configurada');
 
     // Validar duración
@@ -605,55 +1175,76 @@ export async function transcribeWithGemini(
     }
 
     const minutes = durationSeconds / 60;
+    const tag = chunk ? `Gemini Chunk ${chunk.index + 1}` : 'Gemini Transcribe';
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Gemini Transcribe] 🎵 Starting standard transcription');
-    console.log(`[Gemini Transcribe] File: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`);
-    console.log(`[Gemini Transcribe] Duration: ${minutes.toFixed(1)} min | Max tokens: ${TRANSCRIPTION_MAX_OUTPUT_TOKENS}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`[${tag}] 🎵 ${(file.size / 1024 / 1024).toFixed(1)}MB · ${minutes.toFixed(1)} min`);
 
     const startTime = Date.now();
 
-    // Upload
-    const fileUri = await uploadToGemini(file, apiKey, (p) => onProgress?.(p * 0.5));
+    // Upload, con un segundo intento.
+    //
+    // La subida iba a pelo: un corte de red de un segundo en mitad de los 20 MB
+    // de un fragmento lo daba por perdido y dejaba un hueco en la transcripción
+    // que un simple reintento habría evitado.
+    let fileUri = '';
+    for (let attempt = 0; attempt < MAX_UPLOAD_ATTEMPTS; attempt++) {
+        throwIfCancelled();
+        try {
+            fileUri = await uploadToGemini(file, apiKey, (p) => {
+                onProgress?.(p * 0.5);
+                // Dentro de un fragmento, la subida es el primer 15% del trabajo.
+                chunk?.onProgress?.(p * 0.3);
+            });
+            break;
+        } catch (e: any) {
+            if (isCancelledError(e)) throw e;
+            if (attempt >= MAX_UPLOAD_ATTEMPTS - 1) throw e;
+            const waitMs = backoffMs(attempt);
+            console.warn(`[${tag}] ⚠️  Subida fallida (${e?.message || e}); reintento en ${(waitMs / 1000).toFixed(0)}s`);
+            progress.pushEvent('retry', m(
+                `Falló la subida del audio — reintentando en ${Math.round(waitMs / 1000)}s`,
+                `Audio upload failed — retrying in ${Math.round(waitMs / 1000)}s`,
+            ), { chunk: chunk?.index });
+            progress.beginWait(Date.now() + waitMs, m('Reintentando la subida', 'Retrying the upload'));
+            await sleep(waitMs);
+            progress.endWait();
+        }
+    }
     onProgress?.(0.5);
+    chunk?.onProgress?.(0.15);
 
     // Normalizar MIME type (Gemini puede rechazar audio/x-m4a)
     let mimeType = file.type || 'audio/mpeg';
     if (mimeType === 'audio/x-m4a') mimeType = 'audio/mp4';
     if (mimeType === 'audio/x-wav') mimeType = 'audio/wav';
 
-    // Prompt de transcripción (simple - no intentar contextualizar)
-    const transcriptionPrompt = `Transcribe this audio accurately in its original language.
+    const isFixed = Boolean(model && model !== 'auto');
+    const models = chainStartingWith(model, TRANSCRIPTION_FALLBACK_MODELS);
+    // Con modelo elegido siempre se arranca por él; el índice compartido sólo
+    // tiene sentido cuando la cadena es la de siempre.
+    const startIdx = isFixed ? 0 : startModelIndex;
+    const maxTokens = outputTokenBudget(durationSeconds, TRANSCRIPTION_MAX_OUTPUT_TOKENS);
+    const prompt = transcriptionPrompt(chunk);
 
-TIMESTAMP RULES:
-- Format: [MM:SS] or [HH:MM:SS]
-- Place at start of new topics/sections only
-- Never mid-sentence
-- Maintain chronological order
+    let requests = 0;
+    /** Próxima longitud a la que toca comprobar si el modelo se ha atascado. */
+    let loopCheckAt = 3000;
 
-Example:
-
-[00:00] Introduction...
-[05:30] Main concept...
-
-Output: transcription with timestamps. No commentary.`;
-
-    // Transcribir con fallback automático de modelos.
-    // maxOutputTokens es fijo (8192) para todos los modelos — correcto para chunks de ≤20 min.
-    const { data, modelUsed, modelIndex } = await geminiGenerateWithFallback(
-        TRANSCRIPTION_FALLBACK_MODELS,
+    // Transcribir con fallback automático de modelos, publicando el avance
+    // según llega el texto.
+    const { text, finishReason, tokensUsed, modelUsed, modelIndex } = await geminiGenerateWithFallback(
+        models,
         apiKey,
         (_model) => ({
             contents: [{
                 parts: [
                     { fileData: { mimeType: mimeType, fileUri } },
-                    { text: transcriptionPrompt }
+                    { text: prompt }
                 ]
             }],
             generationConfig: {
                 temperature: 0.1,
-                maxOutputTokens: TRANSCRIPTION_MAX_OUTPUT_TOKENS,
+                maxOutputTokens: maxTokens,
             },
             safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -662,64 +1253,104 @@ Output: transcription with timestamps. No commentary.`;
                 { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
             ],
         }),
-        'Gemini Transcribe',
-        startModelIndex
+        tag,
+        startIdx,
+        {
+            preferredModel: isFixed ? model : undefined,
+            onAttempt: (activeModel, attempt) => {
+                requests++;
+                if (chunk) {
+                    progress.setChunkMeta(chunk.index, { model: activeModel, attempts: attempt, requests });
+                } else {
+                    progress.setModel(activeModel, { n: attempt, max: MAX_RETRIES_PER_MODEL });
+                }
+            },
+            onDelta: (acc) => {
+                const p = progressFromTimestamps(acc, durationSeconds);
+                // El texto que llega es el 85% restante del trabajo del fragmento.
+                chunk?.onProgress?.(0.15 + p * 0.85);
+                onProgress?.(0.5 + p * 0.45);
+                if (!chunk) progress.setStreamCounters(acc.length);
+
+                // Un modelo atascado ("no, no, no…") no se desatasca solo: se
+                // queda repitiendo hasta agotar el presupuesto de tokens. Antes
+                // había que pagar la respuesta entera y limpiarla después;
+                // ahora se corta en cuanto se ve, y lo transcrito hasta ahí se
+                // conserva.
+                if (acc.length >= loopCheckAt) {
+                    loopCheckAt = acc.length + 3000;
+                    if (tailRepetitionRun(acc)) {
+                        console.warn(`[${tag}] 🔁 Repetition loop detected — cutting the stream`);
+                        progress.pushEvent('warn', m(
+                            'El modelo se atascó repitiendo — se corta ahí',
+                            'The model got stuck repeating — cutting it short',
+                        ), { chunk: chunk?.index });
+                        return false;
+                    }
+                }
+            },
+        },
     );
 
-    onProgress?.(0.85);
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    onProgress?.(0.95);
 
     if (!text) {
-        console.error('[Gemini Transcribe] Finish Reason:', candidate?.finishReason);
-        throw new Error(`No se generó transcripción. Razón: ${candidate?.finishReason || 'Desconocida'}`);
+        console.error(`[${tag}] Finish Reason:`, finishReason);
+        throw new Error(`No se generó transcripción. Razón: ${finishReason || 'Desconocida'}`);
     }
 
     // Limpiar espacios dentro de los timestamps: [ 00:13:19] -> [00:13:19]
     let cleanText = text.replace(/\[\s+(\d)/g, '[$1');
 
+    const repCheck = stripRepetitionRuns(cleanText);
+    if (repCheck.removed > 0) {
+        cleanText = repCheck.text;
+    }
+
     // POST-PROCESSING: Limpiar artifacts si llegó a MAX_TOKENS
-    if (candidate?.finishReason === 'MAX_TOKENS') {
-        console.warn('[Gemini Transcribe] ⚠️  Hit MAX_TOKENS - Cleaning artifacts...');
+    if (finishReason === 'MAX_TOKENS') {
+        console.warn(`[${tag}] ⚠️  Hit MAX_TOKENS - Cleaning artifacts...`);
+        const lastSec = lastTimestampSeconds(cleanText);
+        const lastLabel = lastSec !== null ? secondsToLabel(lastSec) : null;
         cleanText = cleanText.replace(/(\b\w{1,4}\b)(?:\s+\1){5,}$/gi, '');
-        cleanText += '\n\n[⚠️ Transcripción cortada por límite de tokens]';
+        cleanText += `\n\n[⚠️ Transcripción cortada por límite de tokens${lastLabel ? `. Falta el audio a partir de ${lastLabel}` : ''}]`;
     }
 
     const finalText = cleanText;
-    const tokensUsed = data.usageMetadata?.candidatesTokenCount || 0;
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    // Logs finales
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Gemini Transcribe] ✅ Complete');
-    console.log(`[Gemini Transcribe] Model: ${modelUsed} | Time: ${totalTime}s | Finish: ${candidate?.finishReason}`);
-    console.log(`[Gemini Transcribe] Tokens: ${tokensUsed}/${TRANSCRIPTION_MAX_OUTPUT_TOKENS} (${((tokensUsed / TRANSCRIPTION_MAX_OUTPUT_TOKENS) * 100).toFixed(0)}%)`);
-    console.log(`[Gemini Transcribe] Output: ${finalText.length} chars, ${finalText.split(/\s+/).length} words`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`[${tag}] ✅ ${modelUsed} · ${totalTime}s · ${finishReason} · ${tokensUsed} tok · ${finalText.length} chars`);
 
     onProgress?.(1);
-    return { text: finalText, tokensUsed, modelIndex };
+    return { text: finalText, tokensUsed, modelIndex, modelUsed, requests };
 }
 
 /**
- * RUTA CHUNKING: Transcripción paralela para audios >= 20 min
- * Corta el audio en chunks de 20 min y los transcribe en paralelo
+ * RUTA CHUNKING: transcripción en paralelo para audios largos.
+ * Corta el audio en fragmentos de CHUNK_SIZE_MINUTES y los reparte entre
+ * varios Flash Lite a la vez, sin pasarse del RPM/TPM del free tier.
  */
-const CHUNK_SIZE_MINUTES = 20;
-const CHUNK_OVERLAP_SECONDS = 30;
+/** Suelo de tamaño por fragmento: impide que el bucle de troceado no avance. */
+const MIN_CHUNK_BYTES = 1024 * 1024;
+/** Tamaño por fragmento cuando no hay duración con la que calcularlo. */
+const FALLBACK_CHUNK_BYTES = 18 * 1024 * 1024;
+/** Tope duro de fragmentos: ninguna entrada válida se acerca a esto. */
+const MAX_BINARY_CHUNKS = 60;
 
 export async function transcribeWithGeminiChunked(
     file: File | File[],
     apiKey: string,
     onProgress?: (progress: number) => void,
     duration?: number,
-    chunkMetadata?: { startTime: number; endTime: number; index: number }[]
+    chunkMetadata?: { startTime: number; endTime: number; index: number }[],
+    model?: string,
+    /** Fragmentos simultáneos que pidió el usuario. 0 o ausente = automático. */
+    requestedConcurrency?: number,
 ): Promise<TranscriptionResult> {
     if (!apiKey) throw new Error('Gemini API Key no configurada');
 
     // 1. Preparar Chunks
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Gemini Chunked] 🧩 Starting PARALLEL CHUNKING');
+    console.log('[Gemini Chunked] 🧩 Starting parallel chunking');
 
     let chunks: { blob: Blob | File, start: number, end: number, index: number, fileName: string }[] = [];
     const isPreChunked = Array.isArray(file);
@@ -738,24 +1369,38 @@ export async function transcribeWithGeminiChunked(
         // ❌ CASO B: Es un solo archivo (MP3/WAV) - Hacer chunking binario (safe)
         const singleFile = Array.isArray(file) ? file[0] : file;
 
-        const durationSeconds = duration || await new Promise<number>((resolve) => {
-            const audio = document.createElement('audio');
-            audio.src = URL.createObjectURL(singleFile);
-            audio.onloadedmetadata = () => resolve(audio.duration);
-        });
+        // La duración es la que decide el tamaño del corte. Si llega como
+        // Infinity (WebM sin índice) o como 0, `size / duration` daba 0 bytes
+        // por fragmento y el bucle de abajo no terminaba nunca: iba llenando
+        // memoria con trozos vacíos hasta que la pestaña moría. De ahí venían
+        // el "no acaba nunca" y el reinicio del navegador.
+        const durationSeconds = sanitizeDuration(duration);
 
-        const durationMinutes = durationSeconds / 60;
-        console.log(`[Gemini Chunked] Duration: ${durationMinutes.toFixed(1)} min`);
+        if (durationSeconds > 0) {
+            console.log(`[Gemini Chunked] Duration: ${(durationSeconds / 60).toFixed(1)} min`);
+        } else {
+            console.warn('[Gemini Chunked] ⚠️  Duración desconocida: se trocea por tamaño fijo');
+            progress.pushEvent('warn', m(
+                'No se pudo leer la duración del audio: se trocea por tamaño',
+                'Could not read the audio duration: splitting by size instead',
+            ));
+        }
         console.log(`[Gemini Chunked] Chunk size: ${CHUNK_SIZE_MINUTES} min (Binary Splicing)`);
 
-        const bytesPerSecond = singleFile.size / durationSeconds;
-        const chunkSizeBytes = bytesPerSecond * (CHUNK_SIZE_MINUTES * 60);
-        const overlapBytes = bytesPerSecond * CHUNK_OVERLAP_SECONDS;
+        // Sin duración fiable se cae a un tamaño fijo por fragmento. Los
+        // tiempos que se muestren serán aproximados, pero el proceso termina.
+        const bytesPerSecond = durationSeconds > 0 ? singleFile.size / durationSeconds : 0;
+        const chunkSizeBytes = Math.max(
+            MIN_CHUNK_BYTES,
+            bytesPerSecond > 0 ? bytesPerSecond * (CHUNK_SIZE_MINUTES * 60) : FALLBACK_CHUNK_BYTES,
+        );
+        const overlapBytes = bytesPerSecond > 0 ? bytesPerSecond * CHUNK_OVERLAP_SECONDS : 0;
+        const secondsPerByte = bytesPerSecond > 0 ? 1 / bytesPerSecond : 0;
 
         let offset = 0;
         let index = 0;
 
-        while (offset < singleFile.size) {
+        while (offset < singleFile.size && index < MAX_BINARY_CHUNKS) {
             let end = Math.min(offset + chunkSizeBytes, singleFile.size);
             if (end < singleFile.size) {
                 end = Math.min(end + overlapBytes, singleFile.size);
@@ -764,8 +1409,8 @@ export async function transcribeWithGeminiChunked(
             const blob = singleFile.slice(offset, end);
             chunks.push({
                 blob: blob,
-                start: offset / bytesPerSecond,
-                end: end / bytesPerSecond,
+                start: offset * secondsPerByte,
+                end: end * secondsPerByte,
                 index,
                 fileName: singleFile.name
             });
@@ -775,10 +1420,24 @@ export async function transcribeWithGeminiChunked(
             offset += chunkSizeBytes;
             index++;
         }
+
+        if (offset < singleFile.size) {
+            console.warn(`[Gemini Chunked] ⚠️  Se alcanzó el tope de ${MAX_BINARY_CHUNKS} fragmentos: el resto del audio no se transcribe`);
+            progress.pushEvent('warn', m(
+                `El audio es tan largo que se corta en el fragmento ${MAX_BINARY_CHUNKS}`,
+                `The audio is so long it is cut at chunk ${MAX_BINARY_CHUNKS}`,
+            ));
+        }
     }
 
     console.log(`[Gemini Chunked] Ready to transcribe ${chunks.length} chunks`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // La cuarentena es de esta ejecución: una caída de hace una hora no debe
+    // condicionar el intento de ahora.
+    resetModelHealth();
+
+    progress.initChunks(chunks.map(c => ({ startSec: c.start, endSec: c.end })));
 
     // 2. Transcribir en Paralelo con índice de modelo compartido
     // Si un chunk descubre que el modelo primario está agotado (RPD),
@@ -786,23 +1445,37 @@ export async function transcribeWithGeminiChunked(
     // arranquen directamente desde el modelo que sí funciona.
     let completedChunks = 0;
     let sharedModelIndex = 0; // índice compartido de la cadena TRANSCRIPTION_FALLBACK_MODELS
+    const isFixed = Boolean(model && model !== 'auto');
+    const activeChain = chainStartingWith(model, TRANSCRIPTION_FALLBACK_MODELS);
 
     const updateProgress = () => {
         completedChunks++;
-        const p = completedChunks / chunks.length;
-        onProgress?.(p);
+        onProgress?.(completedChunks / chunks.length);
     };
 
     const startTime = Date.now();
 
-    // Concurrencia limitada por RPM/TPM: lanzar TODOS los chunks a la vez
-    // supera los 250K TPM en cuanto hay más de ~5 chunks de 20 min.
+    // Cuántos a la vez. Lo elige el usuario, pero nunca por encima de lo que
+    // permiten el RPM y el TPM del modelo: pasar de ahí no es ir más rápido,
+    // es garantizar 429s y acabar tardando más.
     const avgChunkSeconds = chunks.reduce((sum, c) => sum + (c.end - c.start), 0) / chunks.length;
-    const concurrency = Math.min(
+    const { value: concurrency, capped, ceiling } = resolveConcurrency(
+        activeChain[sharedModelIndex] || activeChain[0],
+        avgChunkSeconds,
         chunks.length,
-        maxParallelChunks(TRANSCRIPTION_FALLBACK_MODELS[sharedModelIndex], avgChunkSeconds)
+        requestedConcurrency,
     );
-    console.log(`[Gemini Chunked] Concurrency: ${concurrency}/${chunks.length} chunks in parallel (~${Math.round(avgChunkSeconds / 60)} min each)`);
+    if (capped) {
+        progress.pushEvent('info', m(
+            `Se transcriben ${ceiling} fragmentos a la vez: más no cabe en el límite gratuito`,
+            `Transcribing ${ceiling} chunks at a time: more does not fit in the free limit`,
+        ));
+    }
+    progress.pushEvent('info', m(
+        `${chunks.length} fragmentos de ${Math.round(avgChunkSeconds / 60)} min · ${concurrency} a la vez`,
+        `${chunks.length} chunks of ${Math.round(avgChunkSeconds / 60)} min · ${concurrency} at a time`,
+    ));
+    console.log(`[Gemini Chunked] Concurrency: ${concurrency}/${chunks.length} (~${Math.round(avgChunkSeconds / 60)} min each)`);
 
     const transcribeChunk = async (chunk: typeof chunks[number]) => {
         // Normalizar MIME type para el chunk - CRÍTICO para M4A
@@ -820,24 +1493,61 @@ export async function transcribeWithGeminiChunked(
         const chunkFile = new File([chunk.blob], `${originalName}_part${chunk.index}`, { type: chunkType });
         const chunkDuration = chunk.end - chunk.start;
 
-        // Usar el índice de modelo compartido; si este chunk sube de modelo,
-        // actualizar el shared para que los chunks que aún no empezaron
-        // arranquen directamente en el modelo que sí responde.
-        const startIdx = sharedModelIndex;
-        const result = await transcribeWithGemini(chunkFile, apiKey, undefined, chunkDuration, startIdx);
+        progress.setChunk(chunk.index, 'active');
 
-        if (result.modelIndex > sharedModelIndex) {
-            console.log(`[Gemini Chunked] 🔀 Updating shared model index: ${sharedModelIndex} → ${result.modelIndex}`);
-            sharedModelIndex = result.modelIndex;
+        try {
+            const startIdx = isFixed ? 0 : sharedModelIndex;
+            const result = await transcribeWithGemini(
+                chunkFile, apiKey, undefined, chunkDuration, startIdx, model,
+                {
+                    index: chunk.index,
+                    total: chunks.length,
+                    startSec: chunk.start,
+                    endSec: chunk.end,
+                    // Lo que mueve la barra: el minuto de audio que el modelo
+                    // acaba de transcribir, mientras lo transcribe.
+                    onProgress: (p) => progress.setChunk(chunk.index, 'active', p),
+                },
+            );
+
+            if (!isFixed && result.modelIndex > sharedModelIndex) {
+                console.log(`[Gemini Chunked] 🔀 Updating shared model index: ${sharedModelIndex} → ${result.modelIndex}`);
+                sharedModelIndex = result.modelIndex;
+            }
+
+            progress.setChunkMeta(chunk.index, {
+                model: result.modelUsed,
+                requests: result.requests,
+                tokens: result.tokensUsed,
+                error: null,
+            });
+            progress.setChunk(chunk.index, 'done', 1);
+            updateProgress();
+            return {
+                index: chunk.index,
+                text: result.text,
+                tokens: result.tokensUsed,
+                offsetMinutes: Math.floor(chunk.start / 60)
+            };
+        } catch (e: any) {
+            if (isCancelledError(e)) throw e;
+            console.error(`[Gemini Chunked] ❌ Chunk ${chunk.index + 1} failed: ${e?.message || e}`);
+            progress.setChunkMeta(chunk.index, { error: e?.message || String(e) });
+            progress.setChunk(chunk.index, 'error', 0);
+            progress.pushEvent('warn', m(
+                `Fragmento ${chunk.index + 1}: ${e?.message || 'no se pudo transcribir'}`,
+                `Chunk ${chunk.index + 1}: ${e?.message || 'could not be transcribed'}`,
+            ), { chunk: chunk.index });
+            updateProgress();
+            const startLabel = secondsToLabel(chunk.start);
+            const endLabel = secondsToLabel(chunk.end);
+            return {
+                index: chunk.index,
+                text: `[⚠️ Falta el audio de ${startLabel} a ${endLabel}: ${e?.message || 'Error al transcribir fragmento'}]`,
+                tokens: 0,
+                offsetMinutes: Math.floor(chunk.start / 60)
+            };
         }
-
-        updateProgress();
-        return {
-            index: chunk.index,
-            text: result.text,
-            tokens: result.tokensUsed,
-            offsetMinutes: Math.floor(chunk.start / 60)
-        };
     };
 
     // Pool de workers: cada worker va tomando el siguiente chunk pendiente.
@@ -855,6 +1565,12 @@ export async function transcribeWithGeminiChunked(
 
     await Promise.all(Array.from({ length: concurrency }, worker));
 
+    const successfulChunks = results.filter(r => !r.text.startsWith('[⚠️ Falta el audio'));
+    if (successfulChunks.length === 0 && results.length > 0) {
+        const firstError = results[0].text.replace(/^\[⚠️ Falta el audio de [^:]+:\s*/, '').replace(/\]$/, '');
+        throw new Error(firstError || 'Todos los fragmentos fallaron al transcribir.');
+    }
+
     // 3. Post-procesamiento: Ajustar timestamps y eliminar duplicación
     console.log('[Gemini Chunked] 🔧 Post-processing...');
     console.log('[Gemini Chunked]   • Adjusting timestamps');
@@ -866,7 +1582,7 @@ export async function transcribeWithGeminiChunked(
     // Ajustar timestamps de cada chunk
     const chunksWithAdjustedTimestamps = results.map(r => ({
         ...r,
-        text: adjustTimestamps(r.text, r.offsetMinutes)
+        text: r.text.startsWith('[⚠️ Falta el audio') ? r.text : adjustTimestamps(r.text, r.offsetMinutes)
     }));
 
     // Detectar y eliminar duplicación entre chunks
@@ -889,6 +1605,135 @@ export async function transcribeWithGeminiChunked(
 
 import type { SummaryLevel } from './store';
 
+// ---------------------------------------------------------------------------
+// Redacción de los apuntes
+// ---------------------------------------------------------------------------
+
+/**
+ * Los tres niveles, como parámetros en vez de como tres prompts.
+ *
+ * Antes había tres textos de unas 150 líneas cada uno, iguales palabra por
+ * palabra salvo en media docena de sitios. Cada arreglo había que hacerlo tres
+ * veces, y de hecho no se hacía: el nivel corto se quedó sin la regla que
+ * impedía al modelo abrir con "Claro, aquí tienes tus apuntes". Aquí sólo se
+ * describe en qué se diferencian.
+ */
+const DEPTH: Record<SummaryLevel, {
+    summary: string;
+    concepts: string;
+    body: string;
+    /** Secciones opcionales, en orden, después del cuerpo. */
+    extras: string[];
+    closing: string;
+}> = {
+    short: {
+        summary: '3-5 bullet points with the most critical ideas. One or two lines each. No padding.',
+        concepts: '5-8 concepts that are essential to follow the content, one precise line each.',
+        body: '2-3 focused paragraphs per section: the main idea, the key arguments, and any example or figure mentioned.',
+        extras: [],
+        closing: 'Be compact but complete: compress ideas, never drop them.',
+    },
+    medium: {
+        summary: '3-5 paragraphs of 3-4 lines synthesising the whole content: main argument, key findings, conclusions.',
+        concepts: '6-12 concepts, two lines each: what it is and why it matters.',
+        body: '2-4 paragraphs per section developing the context, the detailed explanation, the evidence or examples given, and how it connects to the rest.',
+        extras: [
+            '## Review Questions\n\n5-10 questions with answers of 2-3 lines, covering the main ideas.\n\n1. **Q:** ...\n   **A:** ...',
+        ],
+        closing: 'Develop the ideas deeply enough that the document stands on its own without the audio. Use real paragraphs, not endless bullet lists.',
+    },
+    long: {
+        summary: '4-6 dense paragraphs of at least 5 lines covering the complete content.',
+        concepts: '8-15 concepts with one explanatory line each.',
+        body: '4-8 paragraphs per section: context, full theoretical explanation, examples given, implications, and connections with other concepts. This is the core of the document and must be the longest part.',
+        extras: [
+            '## Examples and Applications\n\nDevelop every example mentioned in full. Do not summarise them.',
+            '## Connections\n\n3-5 paragraphs explaining how the concepts relate to each other.',
+            '## Review Questions\n\n10-20 questions with answers of 3-5 lines.\n\n1. **Q:** ...\n   **A:** ...',
+        ],
+        closing: 'Write at length: more developed detail makes a better document. Never describe the document itself.',
+    },
+};
+
+/**
+ * Un único prompt, parametrizado por nivel e idioma.
+ *
+ * El idioma se repite arriba y abajo a propósito: el primer token que genera
+ * el modelo es el título, y era justo ahí donde se olvidaba de traducir.
+ */
+export function buildNotesPrompt(
+    transcription: string,
+    summaryLevel: SummaryLevel,
+    outputLanguage: string,
+): string {
+    const d = DEPTH[summaryLevel] ?? DEPTH.short;
+    const auto = outputLanguage === 'auto';
+    const lang = auto ? "the audio's original language" : getLanguageNameEn(outputLanguage);
+    const LANG = lang.toUpperCase();
+
+    const extras = d.extras.length ? `\n\n${d.extras.join('\n\n')}` : '';
+
+    return `You are an expert at turning a lecture transcript into study notes.
+
+LANGUAGE
+Write EVERYTHING in ${LANG}: the title, every heading, every paragraph, every question.${auto ? '' : ' Translate the content; do not leave anything in the original language.'}
+The headings below are English templates — translate them too.
+
+OUTPUT
+Your very first characters must be "# " followed by a descriptive title in ${lang}.
+No preamble, no "here are your notes", no closing remarks, no emoji.
+Clean Markdown. **Bold** for technical terms. Code blocks for code.
+Fix the obvious errors of spoken transcription (false starts, repeated words), but never invent content that is not in the transcript. If something is unclear in the audio, leave it out rather than guessing.
+
+STRUCTURE
+
+# [Title in ${lang}]
+
+## Summary
+
+${d.summary}
+
+## Key Concepts
+
+${d.concepts}
+- **Concept**: explanation
+
+## Content
+
+Split the recording into its actual topics. One section per topic, in the order they were discussed:
+
+### [MM:SS] [Section title]
+
+${d.body}
+
+## Definitions
+
+Only terms that are defined in the audio or that would be unclear without a definition.
+
+> **Term**: definition based on how it is used here.${extras}
+
+---
+
+TRANSCRIPT:
+${transcription}
+
+---
+${d.closing}
+Remember: start immediately with the "# " title, written in ${LANG}.`;
+}
+
+/** Cuenta las secciones `##` que se esperan, para mover la barra al redactar. */
+const expectedSections = (level: SummaryLevel) => 4 + (DEPTH[level]?.extras.length ?? 0);
+
+/**
+ * Redacta los apuntes en UNA petición grande.
+ *
+ * Reparto de papeles del free tier: los fragmentos los transcriben los Flash
+ * Lite (muchas peticiones, 500 al día); aquí, que es una sola petición por
+ * audio y la que decide la calidad de lo que se lee, entra un Flash. Y si los
+ * Flash se han quedado sin sus 20 peticiones diarias, se cae a un Lite en vez
+ * de fallar: la transcripción ya está pagada.
+ */
 export async function organizeNotesWithGemini(
     transcription: string,
     apiKey: string,
@@ -900,342 +1745,88 @@ export async function organizeNotesWithGemini(
     if (!transcription) throw new Error('Missing transcription to organize');
 
     onStep?.(1);
+    console.log(`[Gemini Organize] 📚 ${transcription.length} chars · nivel ${summaryLevel}`);
 
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Gemini Organize] 📚 Starting organization');
-    console.log(`[Gemini Organize] Input: ${transcription.length} chars | Level: ${summaryLevel}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-
-    const langInstructions = outputLanguage === 'auto'
-        ? 'in the same language as the audio'
-        : `entirely in ${getLanguageNameEn(outputLanguage)}`;
-
-    const translationRule = outputLanguage === 'auto'
-        ? '- Use the same language as the original audio throughout the entire response.'
-        : `- MANDATORY: Write the ENTIRE response in ${getLanguageNameEn(outputLanguage).toUpperCase()} only. This includes the title, all section headings, summaries, key concepts, definitions, content paragraphs under every ### timestamp heading, and review questions. Do NOT mix languages or leave any part in the original language.`;
-
-    // Bloque MANDATORY OUTPUT FORMAT — language-aware
-    const mandatoryFormatBlock = outputLanguage === 'auto'
-        ? `MANDATORY OUTPUT FORMAT:
-Your response MUST begin IMMEDIATELY with # followed by the title in the audio's language.
-Do NOT include introductory phrases.
-The first line of your response MUST be the title in Markdown format.`
-        : `MANDATORY OUTPUT FORMAT:
-Your response MUST begin IMMEDIATELY with # followed by the title IN ${getLanguageNameEn(outputLanguage).toUpperCase()}.
-Do NOT include introductory phrases.
-The first line MUST be: # [descriptive title written in ${getLanguageNameEn(outputLanguage)}]`;
-
-    // Bloque LANGUAGE RULE dedicado — se inserta justo antes del OUTPUT STRUCTURE
-    // para que el modelo lo tenga fresco cuando empieza a generar el primer token (#título)
-    const langRuleBlock = outputLanguage === 'auto'
-        ? `LANGUAGE RULE:
-- Your FIRST token MUST be the # title line. Do NOT skip it.
-- Write the entire output in the same language as the audio. Do not translate anything.
-- The section headings shown in OUTPUT STRUCTURE (Summary, Key Concepts, Content, Definitions, Review Questions, etc.) are TEMPLATES written in English for reference only. Translate ALL of them into the audio's language.`
-        : `LANGUAGE RULE:
-The target output language is: ${getLanguageNameEn(outputLanguage).toUpperCase()}
-- Your FIRST token is the # title. That title MUST be in ${getLanguageNameEn(outputLanguage)}.
-- ALL text in the response MUST be in ${getLanguageNameEn(outputLanguage)}: title, ALL ## and ### section headings, ALL bullet points, ALL paragraphs, ALL definitions, ALL review questions.
-- The section headings shown in OUTPUT STRUCTURE (Summary, Key Concepts, Content, Definitions, etc.) are TEMPLATES written in English for reference only. Translate ALL of them into ${getLanguageNameEn(outputLanguage)}.
-- Zero exceptions. Not a single heading or sentence should remain in any other language.`;
-
-    // Placeholder del título con idioma explícito incrustado
-    const titlePlaceholder = outputLanguage === 'auto'
-        ? '# [Professional Descriptive Title of the Topic]'
-        : `# [Professional Descriptive Title — WRITTEN IN ${getLanguageNameEn(outputLanguage).toUpperCase()}]`;
-
-    // Recordatorio al pie — refuerza el idioma del título justo después de la transcripción
-    const footerTitleReminder = outputLanguage === 'auto'
-        ? 'Your response MUST begin IMMEDIATELY with # followed by the title in the audio\'s language.'
-        : `Your response MUST begin IMMEDIATELY with # followed by the title IN ${getLanguageNameEn(outputLanguage).toUpperCase()}.`;
-
-    // SHORT prompt
-    const shortPrompt = `You are an expert assistant specialized in creating concise academic notes ${langInstructions}
-
-${mandatoryFormatBlock}
-
-CRITICAL OBJECTIVE:
-Produce a compact but complete reference document. Every word must earn its place.
-
-FORMATTING RULES:
-1. NO emojis
-2. Clean and professional Markdown
-3. Correct oral transcription errors
-4. Use **bold** for important technical terms
-5. If code is mentioned, use code blocks
-
-${langRuleBlock}
-
-OUTPUT STRUCTURE:
-
-${titlePlaceholder}
-
-## 1. Summary
-
-[3-5 bullet points capturing the most critical ideas. Each bullet: 1-2 lines maximum, direct and informative. No padding.]
-
-## 2. Key Concepts
-
-[5-8 concepts that are essential to understand the content]
-- **Concept 1**: One precise explanatory line
-- **Concept 2**: One precise explanatory line
-- ...
-
-## 3. Content
-
-[Organize the audio into logical sections. For each section:]
-
-### [MM:SS] [Descriptive Section Title]
-
-[2-3 focused paragraphs covering:
-- The main idea of this section
-- Key points and arguments made
-- Any specific examples or data mentioned]
-
-[Repeat this pattern for every distinct topic in the audio]
-
-## 4. Definitions
-
-[Include only the terms that are explicitly defined or would be unclear without definition]
-
-> **Term 1**: Clear, context-based definition.
-
-> **Term 2**: Clear, context-based definition.
-
----
-
-TRANSCRIPTION:
-${transcription}
-
-IMPORTANT: Be concise but complete. Do not omit key ideas — compress them efficiently.
-${footerTitleReminder}
-${translationRule}`;
-
-    // MEDIUM prompt
-    const mediumPrompt = `You are an expert assistant specialized in creating detailed academic notes ${langInstructions}
-
-${mandatoryFormatBlock}
-
-CRITICAL OBJECTIVE:
-Transform the transcript into a well-structured academic document that captures all important ideas with sufficient detail to understand them without listening to the audio.
-
-FORMATTING RULES:
-1. NO emojis
-2. Clean and professional Markdown
-3. Correct oral transcription errors
-4. Use **bold** for important technical terms
-5. If code is mentioned, use code blocks
-
-${langRuleBlock}
-
-OUTPUT STRUCTURE:
-
-${titlePlaceholder}
-
-## 1. Summary
-
-[3-5 paragraphs synthesizing the full content. Each paragraph must be 3-4 lines. Cover the main argument, key findings, and conclusions.]
-
-## 2. Key Concepts
-- **Concept 1**: 2-line explanation covering what it is and why it matters
-- **Concept 2**: 2-line explanation covering what it is and why it matters
-- ...
-
-## 3. Content Development
-
-[THIS IS THE CORE SECTION — develop each topic thoroughly]
-
-### [MM:SS] [Descriptive Section Title]
-
-[2-4 paragraphs per section that develop:
-- The context and why this point is being made
-- The detailed explanation of the idea
-- Any examples, data, or evidence mentioned
-- Connections to other concepts in the audio]
-
-[Repeat this pattern for ALL distinct topics in the audio]
-
-## 4. Definitions and Terminology
-
-[Include all terms that are defined or require clarification]
-
-> **Term 1**: Complete definition based on how it is used in context.
-
-> **Term 2**: Complete definition based on how it is used in context.
-
-## 5. Review Questions
-
-[Generate 5-10 questions that test understanding of the material]
-
-1. **Q:** [Conceptual question about a key idea]
-   **A:** [2-3 line answer that explains the concept clearly]
-
-2. **Q:** [Question about a specific example or application]
-   **A:** [Answer referencing the content from the audio]
-
-[Continue until the main concepts are covered]
-
----
-
-TRANSCRIPTION:
-${transcription}
-
-IMPORTANT: Develop ideas with enough depth that the document stands alone without the audio. Do not list-ify everything — use real paragraphs.
-${footerTitleReminder}
-${translationRule}`;
-
-    // LONG prompt
-    const longPrompt = `You are an expert assistant specialized in creating EXHAUSTIVE and professional academic notes ${langInstructions}
-
-${mandatoryFormatBlock}
-
-CRITICAL OBJECTIVE:
-Transform the transcript into an academic document SO COMPLETE that it eliminates the need to listen to the audio again.
-
-DEPTH RULES:
-- DO NOT use the word exhaustive or any similar word in the content.
-- USE ALL AVAILABLE TOKENS
-- DO NOT over-summarize — DEVELOP each concept COMPLETELY
-- If the transcript is long, the notes MUST be proportionally long
-- Each section must have MULTIPLE dense paragraphs
-- Include ALL relevant content, not only the most important parts
-
-FORMATTING RULES:
-1. NO emojis
-2. Clean and professional Markdown
-3. Correct oral transcription errors
-4. If code is mentioned, use code blocks
-5. Use **bold** for important technical terms
-
-${langRuleBlock}
-
-OUTPUT STRUCTURE:
-
-${titlePlaceholder}
-
-## 1. Summary
-
-[3-6 DENSE paragraphs synthesizing the complete essence of the content. Do not skimp on details. Each paragraph must be a minimum of 4-6 lines.]
-
-## 2. Key Concepts
-
-[List of 8-15 main concepts, with one explanatory line for each]
-- **Concept 1**: Brief explanation
-- **Concept 2**: Brief explanation
-- ...
-
-## 3. Content Development
-
-[THIS IS THE MOST IMPORTANT SECTION — Must be VERY extensive]
-
-### [Descriptive Subtitle of First Section]
-
-[Multiple paragraphs (4-8) COMPLETELY developing this section:
-- Context and introduction
-- Detailed theoretical explanation
-- Examples mentioned
-- Implications and applications
-- Connections with other concepts]
-
-### [Next Subtitle]
-
-[Continue with the same level of depth...]
-
-[Repeat this pattern for ALL main sections of the audio]
-
-## 4. Definitions and Terminology
-
-> **Term 1**: Complete and accurate definition based on context.
-
-> **Term 2**: Detailed technical definition.
-
-[Include ALL definitions mentioned]
-
-## 5. Examples, Case Studies and Applications
-
-[Develop ALL mentioned examples with full detail. Do not summarize them — explain them completely.]
-
-## 6. Connections and Synthesis
-
-[Explain how the concepts relate to each other. This section must have 3-5 paragraphs.]
-
-## 7. Review Questions
-
-[Generate 10-20 questions depending on content length]
-
-1. **Q: [Deep conceptual question]**
-   **A:** [Complete 3-5 line answer]
-
-2. **Q: [Practical application question]**
-   **A:** [Answer with detailed example]
-
-[Continue until all important concepts are covered]
-
----
-
-TRANSCRIPTION:
-${transcription}
-
-IMPORTANT: Generate EXTENSIVE notes. USE ALL AVAILABLE TOKENS. More detail = better document.
-${footerTitleReminder}
-DO NOT use the word exhaustive or any similar word in the content.
-${translationRule}`;
-
-    let prompt: string;
-    switch (summaryLevel) {
-        case 'short': prompt = shortPrompt; break;
-        case 'medium': prompt = mediumPrompt; break;
-        default: prompt = longPrompt; break;
-    }
-
+    const prompt = buildNotesPrompt(transcription, summaryLevel, outputLanguage);
+    const sections = expectedSections(summaryLevel);
     onStep?.(2);
 
     const startTime = Date.now();
 
-    const { data, modelUsed } = await geminiGenerateWithFallback(
-        ORGANIZATION_FALLBACK_MODELS,
-        apiKey,
-        (model) => ({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-                temperature: 0.2,
-                // Usa el máximo real del modelo activo; conservador por defecto si no está en el mapa
-                maxOutputTokens: ORGANIZATION_MAX_OUTPUT_TOKENS[model] ?? 8192,
-            },
-            safetySettings: [
-                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-            ],
-        }),
-        'Gemini Organize'
+    const body = (model: string) => ({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+            temperature: 0.2,
+            // Usa el máximo real del modelo activo; conservador por defecto.
+            maxOutputTokens: ORGANIZATION_MAX_OUTPUT_TOKENS[model] ?? 8192,
+        },
+        safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        ],
+    });
+
+    /**
+     * El texto llega en streaming: cada `##` que aparece es una sección
+     * terminada, y eso mueve la barra con algo real en vez de con un reloj.
+     */
+    const onDelta = (acc: string) => {
+        const headings = acc.match(/^##\s+.*$/gm) || [];
+        const ratio = Math.min(0.97, Math.max(
+            headings.length / sections,
+            Math.min(0.15, acc.length / 6000),
+        ));
+        const current = headings.length ? headings[headings.length - 1].replace(/^##\s+/, '') : null;
+        progress.setStreamCounters(acc.length);
+        progress.setStage('organize', ratio, current
+            ? m(`Redactando: ${current}`, `Writing: ${current}`)
+            : m('Analizando la transcripción', 'Analyzing the transcript'));
+    };
+
+    const call = (models: readonly string[], label: string) => geminiGenerateWithFallback(
+        models, apiKey, body, label, 0,
+        { onDelta, onAttempt: (model, attempt) => progress.setModel(model, { n: attempt, max: MAX_RETRIES_PER_MODEL }) },
     );
 
+    let result: GenerateResult;
+    try {
+        result = await call(ORGANIZATION_FALLBACK_MODELS, 'Gemini Organize');
+    } catch (e: any) {
+        if (isCancelledError(e)) throw e;
+
+        // Un fallo definitivo (key inválida, petición mal formada) falla igual
+        // en cualquier modelo: no se reintenta con otro.
+        if (isDefinitiveError(e)) throw e;
+
+        // Los cuatro Flash se han quedado sin cuota o sin servicio. Se redacta
+        // con un Flash Lite antes que devolver un error con la transcripción
+        // ya hecha: unos apuntes algo más flojos valen infinitamente más que
+        // media hora de audio transcrita y tirada.
+        console.warn('[Gemini Organize] ⚠️  Toda la cadena Flash falló:', e?.message || e);
+        progress.pushEvent('warn', m(
+            'Los modelos Flash no están disponibles: se redactan los apuntes con Flash Lite',
+            'The Flash models are unavailable: writing the notes with Flash Lite instead',
+        ));
+
+        result = await call(GEMINI_NOTES_FALLBACK_CHAIN, 'Gemini Organize (Flash Lite)');
+    }
+
     onStep?.(3);
-    const candidate = data.candidates?.[0];
-    const content = candidate?.content?.parts?.[0]?.text;
 
+    const { text: content, finishReason, tokensUsed, modelUsed } = result;
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-    const tokensUsed = data.usageMetadata?.candidatesTokenCount || 0;
-    const modelMaxTokens = ORGANIZATION_MAX_OUTPUT_TOKENS[modelUsed] ?? 8192;
-    const efficiency = tokensUsed > 0 ? ((tokensUsed / modelMaxTokens) * 100).toFixed(0) : 'N/A';
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('[Gemini Organize] ✅ Complete');
-    console.log(`[Gemini Organize] Model: ${modelUsed} | Time: ${totalTime}s | Finish: ${candidate?.finishReason}`);
-    console.log(`[Gemini Organize] Tokens: ${tokensUsed}/${modelMaxTokens} (${efficiency}%)`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`[Gemini Organize] ✅ ${modelUsed} · ${totalTime}s · ${finishReason} · ${tokensUsed} tok`);
 
     if (!content) {
-        console.error('[Gemini] Finish Reason:', candidate?.finishReason);
-        throw new Error(`No se generaron apuntes. Razón: ${candidate?.finishReason || 'Desconocida'}`);
+        throw new Error(`No se generaron apuntes. Razón: ${finishReason || 'Desconocida'}`);
     }
 
     onStep?.(4);
     onStep?.(5);
-    return { notes: content, tokensUsed };
+    const cleaned = stripRepetitionRuns(content).text;
+    return { notes: cleaned, tokensUsed };
 }
 
 /**

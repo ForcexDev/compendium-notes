@@ -4,40 +4,21 @@ import { useAppStore } from '../../lib/store';
 import type { ProcessingState } from '../../lib/store';
 import { t } from '../../lib/i18n';
 import { Loader2, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import { useProgress } from '../../lib/useProgress';
+import { formatEta } from '../../lib/progress';
 
 const ACTIVE_STATES: ProcessingState[] = ['compressing', 'uploading', 'transcribing', 'analyzing'];
 const isActiveState = (state: ProcessingState) => ACTIVE_STATES.includes(state);
-
-// Cada etapa ocupa un tramo fijo del 0-100% global. El progreso que publica
-// el store es local a la etapa, así que sin este mapeo la barra retrocedía
-// cada vez que el proceso cambiaba de fase.
-const STAGE_RANGE: Record<string, [number, number]> = {
-    compressing: [0, 0.25],
-    uploading: [0.25, 0.4],
-    transcribing: [0.4, 0.85],
-    analyzing: [0.85, 1],
-};
-
-const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-
-function globalProgress(state: ProcessingState, progress: number, aiStep: number): number {
-    const range = STAGE_RANGE[state];
-    if (!range) return 0;
-    const [from, to] = range;
-    // 'analyzing' no emite processingProgress: avanza por aiStep (0-5), la
-    // misma convención que GlobalAudioProcessor usa para persistir progreso.
-    const raw = state === 'analyzing' ? clamp01(aiStep / 5) : clamp01(progress);
-    return from + (to - from) * raw;
-}
 
 export default function ProcessNotification() {
     // Selectores individuales: sin ellos el componente se re-renderizaba con
     // cualquier cambio del store (transcripción, notas, título...), no sólo
     // con el progreso que muestra.
     const processingState = useAppStore((s) => s.processingState);
-    const processingProgress = useAppStore((s) => s.processingProgress);
-    const aiStep = useAppStore((s) => s.aiStep);
     const locale = useAppStore((s) => s.locale);
+    // Mismo origen de datos que la pantalla de la app: el aviso flotante y la
+    // vista completa no pueden enseñar porcentajes distintos.
+    const snap = useProgress();
 
     const reduceMotion = useReducedMotion();
 
@@ -129,12 +110,12 @@ export default function ProcessNotification() {
             return;
         }
 
-        const value = Math.round(globalProgress(processingState, processingProgress, aiStep) * 100);
+        const value = Math.round(snap.global * 100);
         const isNewRun = !wasActiveRef.current;
         wasActiveRef.current = true;
         // Nunca retrocede dentro de una misma ejecución.
         setPercentage((prev) => (isNewRun ? value : Math.max(prev, value)));
-    }, [processingState, processingProgress, aiStep]);
+    }, [processingState, snap.global]);
 
     const getStatusText = () => {
         switch (processingState) {
@@ -148,7 +129,12 @@ export default function ProcessNotification() {
         }
     };
 
-    const statusText = getStatusText();
+    // El detalle del tracker ("Minuto 34 de 78") dice mucho más que
+    // "Transcribiendo...", así que manda cuando existe.
+    const statusText = isActiveState(processingState) && snap.detail
+        ? snap.detail
+        : getStatusText();
+    const etaText = isActiveState(processingState) ? formatEta(snap.etaMs, locale) : null;
     const actionText = isError ? t('notif.click_detail', locale) : t('notif.click_view', locale);
 
     const accentBorder = isError
@@ -220,12 +206,12 @@ export default function ProcessNotification() {
                                 {/* Content */}
                                 <div className="flex flex-col min-w-[140px] sm:min-w-[180px]">
                                     <div className="flex items-center justify-between mb-1 sm:mb-1.5 gap-2 sm:gap-3">
-                                        <span className="text-[11px] sm:text-xs font-semibold tracking-wide whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
+                                        <span className="text-[11px] sm:text-xs font-semibold tracking-wide truncate max-w-[160px] sm:max-w-[200px]" style={{ color: 'var(--text-primary)' }}>
                                             {statusText}
                                         </span>
                                         {!isComplete && !isError && (
-                                            <span className="text-[9px] sm:text-[10px] font-mono" style={{ color: 'var(--text-muted)' }}>
-                                                {percentage}%
+                                            <span className="text-[9px] sm:text-[10px] font-mono whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>
+                                                {percentage}%{etaText ? ` · ${etaText}` : ''}
                                             </span>
                                         )}
                                     </div>

@@ -1,5 +1,9 @@
 import { Mp3Encoder } from '@breezystack/lamejs';
-import { chunkFileTemporally, needsTemporalChunking, isFFmpegSupported } from './ffmpeg-chunker';
+import { chunkFileTemporally, needsTemporalChunking, isFFmpegSupported, extractAudioTrack, probeDuration } from './ffmpeg-chunker';
+import { sanitizeDuration } from './duration';
+import { CHUNK_SIZE_MINUTES as GEMINI_CHUNK_MINUTES, CHUNK_OVERLAP_SECONDS as GEMINI_CHUNK_OVERLAP } from './gemini';
+
+export { sanitizeDuration };
 
 
 // Configuración por proveedor
@@ -11,8 +15,15 @@ const GROQ_CHUNK_SIZE = 20 * 1024 * 1024;  // 20MB por chunk
 const GEMINI_SAMPLE_RATE = 44100; // 44.1kHz - Alta calidad
 const GEMINI_BITRATE = 128;       // 128kbps - Alta calidad
 
-// Umbral para activar chunking (minutos)
-const CHUNKING_THRESHOLD_MINUTES = 20;
+/**
+ * Umbral y tamaño del troceado, en minutos.
+ *
+ * Lo fija la capa de Gemini (`CHUNK_SIZE_MINUTES`) para que el corte físico del
+ * audio y lo que después se le pide al modelo hablen del mismo tamaño. Estaban
+ * duplicados en 20 en los dos sitios, así que cambiarlo en uno solo dejaba
+ * fragmentos que no coincidían con los tiempos anunciados.
+ */
+const CHUNKING_THRESHOLD_MINUTES = GEMINI_CHUNK_MINUTES;
 
 export interface CompressionResult {
     file: File;
@@ -34,41 +45,101 @@ export interface ProcessedAudio {
 }
 
 /**
- * Obtener duración de un archivo multimedia (audio/video)
+ * Plazo del elemento `<audio>`.
+ *
+ * Corto a propósito: en Chrome se ha observado que un `<audio>` con una URL de
+ * blob puede quedarse en `networkState: LOADING` / `readyState: 0` para
+ * siempre, sin emitir `loadedmetadata` NI `error`, incluso con un MP3
+ * perfectamente válido. Esperar más no aporta nada; hay caminos mejores debajo.
  */
-export async function getMediaDuration(file: File): Promise<number> {
-    return new Promise(async (resolve) => {
+const ELEMENT_TIMEOUT_MS = 8_000;
+
+/**
+ * Tope para leer la duración decodificando.
+ *
+ * `decodeAudioData` es exacto y rapidísimo, pero deja el audio entero en
+ * memoria: por encima de este tamaño se pasa a FFmpeg, que sólo lee cabeceras.
+ */
+const MAX_DECODE_PROBE_BYTES = 15 * 1024 * 1024;
+
+/** Duración según el elemento multimedia, o 0 si no contesta a tiempo. */
+function durationFromElement(file: File): Promise<number> {
+    return new Promise<number>((resolve) => {
         const url = URL.createObjectURL(file);
         const media = file.type.startsWith('video/')
             ? document.createElement('video')
             : document.createElement('audio');
 
-        media.onloadedmetadata = async () => {
-            let duration = media.duration;
+        let settled = false;
+        const finish = (duration: number) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            media.onloadedmetadata = null;
+            media.onerror = null;
+            try { media.src = ''; } catch { /* el navegador ya lo soltó */ }
             URL.revokeObjectURL(url);
-
-            // WebM recordings often report Infinity. If it's small, we decode it to get the real duration.
-            if (!Number.isFinite(duration) && file.size < 10 * 1024 * 1024) {
-                try {
-                    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                    const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
-                    duration = buffer.duration;
-                    await ctx.close();
-                } catch (e) {
-                    console.warn('[AudioProcessor] Could not decode for duration fallback');
-                }
-            }
-            resolve(duration);
+            resolve(sanitizeDuration(duration));
         };
 
-        media.onerror = () => {
-            URL.revokeObjectURL(url);
-            console.warn('[AudioProcessor] ⚠️  Could not read media duration');
-            resolve(0);
-        };
-
+        const timer = setTimeout(() => finish(0), ELEMENT_TIMEOUT_MS);
+        media.onloadedmetadata = () => finish(media.duration);
+        media.onerror = () => finish(0);
         media.src = url;
     });
+}
+
+/** Duración exacta decodificando el audio. Sólo para archivos manejables. */
+async function durationFromDecode(file: File): Promise<number> {
+    if (file.size > MAX_DECODE_PROBE_BYTES) return 0;
+    let ctx: AudioContext | null = null;
+    try {
+        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const buffer = await ctx.decodeAudioData(await file.arrayBuffer());
+        return sanitizeDuration(buffer.duration);
+    } catch {
+        return 0;
+    } finally {
+        await ctx?.close().catch(() => { /* ya cerrado */ });
+    }
+}
+
+/** Duración leyendo sólo las cabeceras con FFmpeg. */
+async function durationFromFFmpeg(file: File): Promise<number> {
+    if (!isFFmpegSupported()) return 0;
+    try {
+        return sanitizeDuration(await probeDuration(file));
+    } catch (e: any) {
+        console.warn('[AudioProcessor] FFmpeg no pudo leer la duración:', e?.message || e);
+        return 0;
+    }
+}
+
+/**
+ * Obtener la duración de un archivo multimedia, por tres caminos.
+ *
+ * Se probó con un solo camino —el elemento `<audio>`— y resultó ser el menos
+ * fiable de los tres: en Chrome se queda cargando indefinidamente con archivos
+ * válidos, y como no emite `error` tampoco había forma de enterarse. Eso
+ * bloqueaba el proceso ANTES de la primera petición, con cualquier archivo.
+ *
+ * Devuelve 0 si ninguno lo consigue — nunca `Infinity` ni `NaN`, y nunca se
+ * queda esperando.
+ */
+export async function getMediaDuration(file: File): Promise<number> {
+    const fromElement = await durationFromElement(file);
+    if (fromElement > 0) return fromElement;
+
+    console.warn('[AudioProcessor] El elemento multimedia no dio la duración; se decodifica');
+    const fromDecode = await durationFromDecode(file);
+    if (fromDecode > 0) return fromDecode;
+
+    console.warn('[AudioProcessor] Decodificar tampoco dio la duración; se prueba con FFmpeg');
+    const fromFFmpeg = await durationFromFFmpeg(file);
+    if (fromFFmpeg > 0) return fromFFmpeg;
+
+    console.warn('[AudioProcessor] ⚠️  No se pudo determinar la duración: se continúa sin ella');
+    return 0;
 }
 
 /**
@@ -124,8 +195,8 @@ export async function processAudioForUpload(
 /**
  * Procesar para GEMINI
  * NUEVA ESTRATEGIA CON FFMPEG:
- * - Audio corto (<20 min): Paso directo
- * - Audio largo (>=20 min):
+ * - Audio corto (< umbral): Paso directo
+ * - Audio largo (>= umbral):
  *   - Si es formato contenedor (M4A, WEBM, etc.): Chunking temporal con FFmpeg
  *   - Si es MP3/WAV: Paso directo (chunking binario se hace en gemini.ts)
  * - Video: Extraer audio @ 44.1kHz 128kbps
@@ -140,15 +211,23 @@ async function processForGemini(
 
     // AUDIO: Analizar estrategia
     if (!isVideo) {
-        // ✅ CASO 1: Audio corto (<20 min) o archivo pequeño (<20MB)
+        // ✅ CASO 1: audio corto de verdad.
+        //
+        // Antes bastaba con que el archivo pesara poco para saltarse el
+        // troceado, y ahí se colaba el fallo: una clase de una hora en M4A a
+        // 64 kbps pesa 18 MB, se daba por corta, y acababa troceada por bytes
+        // en la capa de red — que es lo único que NO se puede hacer con un
+        // contenedor M4A. Manda la duración; el tamaño sólo decide cuando no
+        // hay duración que valga.
         const isSmallFile = file.size < 20 * 1024 * 1024;
-        const isShortDuration = Number.isFinite(minutes) && minutes < CHUNKING_THRESHOLD_MINUTES;
-        const isLikelyShort = isSmallFile || isShortDuration;
+        const knownDuration = Number.isFinite(minutes) && minutes > 0;
+        const isShortDuration = knownDuration && minutes < CHUNKING_THRESHOLD_MINUTES;
+        const isLikelyShort = isShortDuration || (!knownDuration && isSmallFile);
 
         if (isLikelyShort) {
-            console.log(isSmallFile
-                ? `[AudioProcessor] ✅ Small file (${(file.size / 1024 / 1024).toFixed(2)}MB): Direct Pass`
-                : '[AudioProcessor] ✅ Normal file < 20min: Direct Pass');
+            console.log(isShortDuration
+                ? `[AudioProcessor] ✅ Normal file < ${CHUNKING_THRESHOLD_MINUTES}min: Direct Pass`
+                : `[AudioProcessor] ✅ Small file of unknown length (${(file.size / 1024 / 1024).toFixed(2)}MB): Direct Pass`);
             console.log('[AudioProcessor] Strategy: Upload as-is to Gemini');
             console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
             return {
@@ -162,7 +241,7 @@ async function processForGemini(
             };
         }
 
-        // ✅ CASO 2: Audio largo (>=20 min) con formato contenedor
+        // ✅ CASO 2: Audio largo con formato contenedor
         if (needsTemporalChunking(file.name, file.type)) {
             // Verificar soporte de FFmpeg
             if (!isFFmpegSupported()) {
@@ -170,7 +249,7 @@ async function processForGemini(
                 return await fallbackToMP3Conversion(file, duration, onProgress);
             }
 
-            console.log('[AudioProcessor] 🎯 Long container format detected (>=20min)');
+            console.log(`[AudioProcessor] 🎯 Long container format detected (>=${CHUNKING_THRESHOLD_MINUTES}min)`);
             console.log('[AudioProcessor] 🔧 Using FFmpeg temporal chunking (NO re-encoding)');
             console.log('[AudioProcessor] Target: Preserve original format with valid chunks');
 
@@ -181,7 +260,7 @@ async function processForGemini(
                     file,
                     duration, // Pasar duración desde Web Audio API
                     CHUNKING_THRESHOLD_MINUTES,
-                    30, // 30s overlap
+                    GEMINI_CHUNK_OVERLAP,
                     (stage, p) => onProgress?.('chunking', p)
                 );
 
@@ -213,7 +292,7 @@ async function processForGemini(
             }
         }
 
-        // ✅ CASO 3: Audio largo (>=20 min) MP3/WAV - Paso directo
+        // ✅ CASO 3: Audio largo MP3/WAV - Paso directo
         // El chunking binario se hará en gemini.ts
         console.log('[AudioProcessor] ✅ Long MP3/WAV file: Direct Pass');
         console.log('[AudioProcessor] Strategy: Binary chunking in Gemini layer');
@@ -236,12 +315,13 @@ async function processForGemini(
     console.log('[AudioProcessor] Target: 44.1kHz @ 128kbps MP3');
     onProgress?.('compressing', 0);
 
-    const extracted = await compressAudio(
+    const extracted = await extractAudio(
         file,
-        (p) => onProgress?.('compressing', p),
+        duration,
         GEMINI_SAMPLE_RATE,
         GEMINI_BITRATE,
-        'Gemini HQ'
+        'Gemini HQ',
+        (p) => onProgress?.('compressing', p),
     );
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -269,12 +349,13 @@ async function fallbackToMP3Conversion(
     console.log('[AudioProcessor] 🔄 Fallback: Converting to MP3 for safe chunking');
     console.log('[AudioProcessor] Target: 44.1kHz @ 128kbps MP3');
 
-    const converted = await compressAudio(
+    const converted = await extractAudio(
         file,
-        (p) => onProgress?.('compressing', p),
+        duration,
         GEMINI_SAMPLE_RATE,
         GEMINI_BITRATE,
-        'Gemini Safe-Chunking'
+        'Gemini Safe-Chunking',
+        (p) => onProgress?.('compressing', p),
     );
 
     return {
@@ -325,12 +406,13 @@ async function processForGroq(
     console.log('[AudioProcessor] Target: 16kHz @ 64kbps MP3 (Whisper optimized)');
     onProgress?.('compressing', 0);
 
-    const compressed = await compressAudio(
+    const compressed = await extractAudio(
         file,
-        (p) => onProgress?.('compressing', p),
+        duration,
         GROQ_SAMPLE_RATE,
         GROQ_BITRATE,
-        'Groq Whisper'
+        'Groq Whisper',
+        (p) => onProgress?.('compressing', p),
     );
 
     let currentFile = compressed.file;
@@ -351,9 +433,60 @@ async function processForGroq(
         };
     }
 
-    // Paso 4: Chunkear (binario - MP3 lo soporta)
-    console.log('[AudioProcessor] ✂️  File > 20MB: Binary Chunking');
+    // Paso 4: Chunkear.
+    //
+    // El troceado binario sólo vale para MP3/WAV: cortar un M4A por bytes
+    // produce fragmentos sin cabecera que Whisper rechaza. Cuando la extracción
+    // la ha hecho FFmpeg (salida AAC/M4A) se trocea por tiempo con el propio
+    // FFmpeg, que es lo único que garantiza fragmentos reproducibles.
     onProgress?.('chunking', 0);
+    const isBinarySafe = currentFile.type === 'audio/mpeg' || currentFile.type === 'audio/wav';
+
+    if (!isBinarySafe && isFFmpegSupported() && currentDuration > 0) {
+        try {
+            console.log('[AudioProcessor] ✂️  Contenedor no divisible por bytes: troceado temporal con FFmpeg');
+            // A 64 kbps, 20 MB son ~41 min. Se deja margen y sin solape: en Groq
+            // no hay deduplicación y el solape se colaría dos veces en el texto.
+            const result = await chunkFileTemporally(
+                currentFile,
+                currentDuration,
+                40,
+                0,
+                (_stage, p) => onProgress?.('chunking', p),
+            );
+            onProgress?.('chunking', 1);
+            console.log('[AudioProcessor] Created', result.chunks.length, 'temporal chunks');
+            console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+            return {
+                chunks: result.chunks.map(c => c.file),
+                originalSize: file.size,
+                compressedSize: currentFile.size,
+                wasCompressed: true,
+                wasChunked: true,
+                chunkingMethod: 'temporal-ffmpeg',
+                duration: currentDuration,
+                chunkMetadata: result.chunks.map(c => ({
+                    startTime: c.startTime,
+                    endTime: c.endTime,
+                    index: c.index,
+                })),
+            };
+        } catch (e: any) {
+            console.warn(`[AudioProcessor] ⚠️  Troceado temporal fallido (${e?.message || e}); se recodifica a MP3 para poder trocear`);
+            const remuxed = await compressAudio(
+                currentFile,
+                (p) => onProgress?.('compressing', p),
+                fitSampleRate(currentDuration, GROQ_SAMPLE_RATE),
+                GROQ_BITRATE,
+                'Groq Whisper (remux)',
+                currentDuration,
+            );
+            currentFile = remuxed.file;
+            currentDuration = remuxed.duration;
+        }
+    }
+
+    console.log('[AudioProcessor] ✂️  File > 20MB: Binary Chunking');
     const chunks = chunkFile(currentFile, GROQ_CHUNK_SIZE);
     onProgress?.('chunking', 1);
 
@@ -372,6 +505,70 @@ async function processForGroq(
 }
 
 /**
+ * Techo de memoria para la ruta Web Audio.
+ *
+ * `decodeAudioData` deja el audio entero descomprimido en el heap (Float32 por
+ * canal). Pasado cierto tamaño la pestaña no lanza un error: se muere, y el
+ * usuario ve un reinicio sin explicación. Es preferible negarse a intentarlo y
+ * decir por qué.
+ */
+const MAX_DECODE_BYTES = 600 * 1024 * 1024;
+
+/** Bytes de PCM que ocuparía decodificar `duration` segundos a `sampleRate`. */
+function estimateDecodedBytes(duration: number, sampleRate: number): number {
+    // Float32 (4 bytes) por muestra y hasta 2 canales antes de mezclar a mono.
+    return duration * sampleRate * 2 * 4;
+}
+
+/**
+ * Baja la calidad de destino en archivos largos para que quepan en memoria.
+ * Para voz, 22 kHz o 16 kHz mono no cambia nada que el modelo pueda notar.
+ */
+function fitSampleRate(duration: number, preferred: number): number {
+    if (duration <= 0) return preferred;
+    for (const rate of [preferred, 32000, 22050, 16000]) {
+        if (rate <= preferred && estimateDecodedBytes(duration, rate) <= MAX_DECODE_BYTES) return rate;
+    }
+    return 16000;
+}
+
+/**
+ * Ruta preferente para vídeo (y para audio que haya que recodificar entero):
+ * FFmpeg si está disponible, y si no la Web Audio API.
+ */
+async function extractAudio(
+    file: File,
+    duration: number,
+    sampleRate: number,
+    bitrateKbps: number,
+    label: string,
+    onProgress?: (progress: number) => void,
+): Promise<CompressionResult> {
+    if (isFFmpegSupported()) {
+        try {
+            console.log(`[AudioProcessor] 🎬 ${label}: extrayendo con FFmpeg (sin decodificar en memoria)`);
+            const { file: extracted } = await extractAudioTrack(file, { sampleRate, bitrateKbps }, onProgress);
+            const realDuration = duration > 0 ? duration : await getMediaDuration(extracted);
+            return {
+                file: extracted,
+                originalSize: file.size,
+                compressedSize: extracted.size,
+                ratio: extracted.size / file.size,
+                duration: realDuration,
+            };
+        } catch (e: any) {
+            console.warn(`[AudioProcessor] ⚠️  FFmpeg no pudo extraer el audio (${e?.message || e}); se prueba con Web Audio`);
+        }
+    }
+
+    const safeRate = fitSampleRate(duration, sampleRate);
+    if (safeRate !== sampleRate) {
+        console.warn(`[AudioProcessor] ⚠️  Archivo largo: se baja la calidad de ${sampleRate}Hz a ${safeRate}Hz para no agotar la memoria`);
+    }
+    return compressAudio(file, onProgress, safeRate, bitrateKbps, label, duration);
+}
+
+/**
  * Comprimir/Extraer audio con logging detallado
  */
 async function compressAudio(
@@ -379,9 +576,21 @@ async function compressAudio(
     onProgress?: (progress: number) => void,
     targetSampleRate: number = GROQ_SAMPLE_RATE,
     targetBitrate: number = GROQ_BITRATE,
-    label: string = 'Audio'
+    label: string = 'Audio',
+    knownDuration: number = 0
 ): Promise<CompressionResult> {
     const startTime = Date.now();
+
+    // Negarse con una explicación es mejor que morir sin ella.
+    const projected = estimateDecodedBytes(knownDuration, targetSampleRate);
+    if (knownDuration > 0 && projected > MAX_DECODE_BYTES) {
+        throw new Error(
+            `El archivo es demasiado largo para procesarlo en el navegador ` +
+            `(${(knownDuration / 60).toFixed(0)} min necesitarían ~${Math.round(projected / 1024 / 1024)} MB de memoria). ` +
+            `Conviértelo a MP3 o divídelo en partes más cortas antes de subirlo.`
+        );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     onProgress?.(0.1);
 
@@ -394,11 +603,10 @@ async function compressAudio(
     try {
         audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     } catch (decodeError: any) {
-        await audioCtx.close();
-        throw new Error(`Failed to decode audio: ${decodeError.message}. The file may be corrupted or in an unsupported codec.`);
+        throw new Error(`No se pudo decodificar el audio: ${decodeError?.message || decodeError}. El archivo puede estar dañado o usar un códec no soportado.`);
+    } finally {
+        await audioCtx.close().catch(() => { /* ya cerrado */ });
     }
-
-    await audioCtx.close();
     onProgress?.(0.3);
 
     // Calcular duración del audio extraído
@@ -517,7 +725,7 @@ function chunkFile(file: File, chunkSize: number = GROQ_CHUNK_SIZE): File[] {
         const chunkFile = new File(
             [blob],
             `${file.name.replace(/\.[^.]+$/, '')}_part${index + 1}.mp3`,
-            { type: file.type }
+            { type: file.type || 'audio/mpeg' }
         );
         chunks.push(chunkFile);
         offset = end;

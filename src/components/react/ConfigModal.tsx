@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { X, Eye, EyeOff, Clipboard, ExternalLink, Check, BadgeCheck, Loader2, Trash2 } from 'lucide-react';
+import { X, Eye, EyeOff, Clipboard, ExternalLink, Check, BadgeCheck, Loader2, Trash2, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
+import { resolveTranscriptionModel, transcriptionModelsFor } from '../../lib/models';
 import { t } from '../../lib/i18n';
 import { validateGroqKey } from '../../lib/groq';
 import { validateGeminiKey } from '../../lib/gemini';
 import SearchableLanguageSelect from './SearchableLanguageSelect';
+
+/**
+ * Simultaneidad ofrecida. 0 es "automático", que es lo que debería elegir casi
+ * todo el mundo; el resto está para quien sabe lo que hace. Por encima de 6 la
+ * propia capa de red recorta, así que ofrecer 10 sería mentir.
+ */
+const CONCURRENCY_OPTIONS = [0, 1, 2, 3, 4, 6] as const;
 
 export default function ConfigModal() {
     const {
@@ -13,7 +21,9 @@ export default function ConfigModal() {
         provider, setProvider, setConfigOpen,
         pdfStyle, setPdfStyle, locale, processingState,
         summaryLevel, setSummaryLevel,
-        outputLanguage, setOutputLanguage
+        outputLanguage, setOutputLanguage,
+        transcriptionModel, setTranscriptionModel,
+        chunkConcurrency, setChunkConcurrency
     } = useAppStore();
 
     const isProcessing = processingState !== 'idle' && processingState !== 'done' && processingState !== 'error';
@@ -121,7 +131,7 @@ export default function ConfigModal() {
                                 }}
                             >
                                 <span className="block font-semibold mb-0.5">Groq</span>
-                                <span className="block text-[10px] opacity-70">Whisper + Llama 3</span>
+                                <span className="block text-[10px] opacity-70">Whisper + GPT-OSS</span>
                             </button>
                             <button
                                 onClick={() => !isProcessing && setProvider('gemini')}
@@ -311,6 +321,70 @@ export default function ConfigModal() {
                         </label>
                         <div className="w-full">
                             <SearchableLanguageSelect disabled={isProcessing} />
+                        </div>
+                    </div>
+
+                    {/* Transcription Model Selector */}
+                    <div>
+                        <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>
+                            {t('app.config.transcription_model', locale)}
+                        </label>
+                        <p className="text-[11px] mb-2 leading-tight" style={{ color: 'var(--text-muted)' }}>
+                            {t('app.config.transcription_model.desc', locale)}
+                        </p>
+                        <div className="relative">
+                            <select
+                                id="transcription-model-select"
+                                value={resolveTranscriptionModel(provider, transcriptionModel)}
+                                disabled={isProcessing}
+                                onChange={(e) => setTranscriptionModel(e.target.value)}
+                                className={`w-full py-2.5 px-3 pr-8 rounded-lg text-xs font-medium transition-all appearance-none cursor-pointer outline-hidden focus:ring-2 focus:ring-[var(--accent)] ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                style={{
+                                    background: 'var(--bg-primary)',
+                                    border: '1px solid var(--border-default)',
+                                    color: 'var(--text-primary)',
+                                }}
+                            >
+                                {transcriptionModelsFor(provider).map((m) => (
+                                    <option key={m.id} value={m.id} style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>
+                                        {m.label} ({m.desc})
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3" style={{ color: 'var(--text-muted)' }}>
+                                <ChevronDown size={14} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Fragmentos simultáneos */}
+                    <div>
+                        <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>
+                            {t('app.config.concurrency', locale)}
+                        </label>
+                        <p className="text-[11px] mb-2 leading-tight" style={{ color: 'var(--text-muted)' }}>
+                            {t('app.config.concurrency.desc', locale)}
+                        </p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                            {CONCURRENCY_OPTIONS.map((n) => {
+                                const activo = chunkConcurrency === n;
+                                return (
+                                    <button
+                                        key={n}
+                                        disabled={isProcessing}
+                                        onClick={() => setChunkConcurrency(n)}
+                                        aria-pressed={activo}
+                                        className={`py-2 rounded-lg text-xs font-medium transition-all ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        style={{
+                                            background: activo ? 'var(--accent-subtle)' : 'var(--bg-primary)',
+                                            border: `1px solid ${activo && !isProcessing ? 'var(--accent)' : 'var(--border-default)'}`,
+                                            color: activo ? 'var(--accent)' : 'var(--text-muted)',
+                                        }}
+                                    >
+                                        {n === 0 ? t('app.config.concurrency.auto', locale) : n}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 

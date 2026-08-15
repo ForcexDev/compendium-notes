@@ -7,6 +7,33 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
  * Soporta: M4A, MP4, MKV, WEBM, OPUS, FLAC, WAV, etc.
  */
 
+/** Plazo para descargar e inicializar el core de FFmpeg.wasm (~30 MB). */
+const LOAD_TIMEOUT_MS = 120_000;
+/** Plazo para una sola orden de FFmpeg. */
+const EXEC_TIMEOUT_MS = 600_000;
+/** Plazo para leer sólo las cabeceras de un archivo. */
+const PROBE_TIMEOUT_MS = 120_000;
+
+/**
+ * Pone plazo a una promesa que no lo trae.
+ *
+ * FFmpeg.wasm no ofrece cancelación: si el WASM se atasca, la promesa nunca
+ * resuelve. Al menos se deja de esperar y se puede degradar a otra ruta.
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`${message} (${Math.round(ms / 1000)}s)`)), ms);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 let ffmpegInstance: FFmpeg | null = null;
 let isLoaded = false;
 
@@ -38,10 +65,17 @@ async function loadFFmpeg(onProgress?: (message: string, ratio: number) => void)
         // Cargar WASM localmente (evita problemas de COEP con CDNs externos)
         const baseURL = window.location.origin + '/ffmpeg';
 
-        await ffmpegInstance.load({
-            coreURL: `${baseURL}/ffmpeg-core.js`,
-            wasmURL: `${baseURL}/ffmpeg-core.wasm`,
-        });
+        // El core pesa ~30 MB: si la descarga se queda a medias, sin plazo esto
+        // no vuelve nunca y el usuario ve "Cargando el motor de audio" para
+        // siempre. Con plazo, la capa de arriba cae al camino sin FFmpeg.
+        await withTimeout(
+            ffmpegInstance.load({
+                coreURL: `${baseURL}/ffmpeg-core.js`,
+                wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+            }),
+            LOAD_TIMEOUT_MS,
+            'No se pudo cargar el motor de audio (FFmpeg)',
+        );
 
         isLoaded = true;
         onProgress?.('FFmpeg cargado', 1);
@@ -210,7 +244,7 @@ export async function chunkFileTemporally(
         let exitCode: number;
         if (shouldReencode) {
             // Recodificación ligera para formatos problemáticos
-            exitCode = await ffmpeg.exec([
+            exitCode = await withTimeout(ffmpeg.exec([
                 '-i', inputFileName,
                 '-ss', startSeconds.toString(),
                 '-t', chunkDuration.toString(),
@@ -218,17 +252,17 @@ export async function chunkFileTemporally(
                 '-b:a', '128k',       // Calidad decente
                 '-y',
                 outputFileName
-            ]);
+            ]), EXEC_TIMEOUT_MS, 'FFmpeg tardó demasiado troceando el audio');
         } else {
             // Stream copy (super rápido, sin recodificación)
-            exitCode = await ffmpeg.exec([
+            exitCode = await withTimeout(ffmpeg.exec([
                 '-i', inputFileName,
                 '-ss', startSeconds.toString(),
                 '-t', chunkDuration.toString(),
                 '-c', 'copy',         // No recodificar
                 '-y',
                 outputFileName
-            ]);
+            ]), EXEC_TIMEOUT_MS, 'FFmpeg tardó demasiado troceando el audio');
         }
 
         if (exitCode !== 0) {
@@ -268,7 +302,7 @@ export async function chunkFileTemporally(
     }
 
     // 5. Limpiar archivo original
-    await ffmpeg.deleteFile(inputFileName);
+    await ffmpeg.deleteFile(inputFileName).catch(() => { /* ya no estaba */ });
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -286,6 +320,101 @@ export async function chunkFileTemporally(
         totalDuration: duration,
         format: extension
     };
+}
+
+/**
+ * Lee la duración de un archivo sin decodificarlo entero.
+ *
+ * Es el último recurso cuando ni el elemento `<audio>` ni `decodeAudioData`
+ * pueden con el archivo (contenedores raros, o archivos tan grandes que
+ * decodificarlos en memoria mataría la pestaña). FFmpeg sólo lee las cabeceras.
+ */
+export async function probeDuration(file: File): Promise<number> {
+    const ffmpeg = await loadFFmpeg();
+    const inputName = 'probe_input.' + getOutputExtension(file.type, file.name);
+
+    let seconds = 0;
+    const onLog = ({ message }: { message: string }) => {
+        // FFmpeg lo escupe por el log: "Duration: 00:48:12.34, start: ..."
+        const m = message.match(/Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/);
+        if (m) seconds = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+    };
+    ffmpeg.on('log', onLog);
+
+    try {
+        await ffmpeg.writeFile(inputName, await fetchFile(file));
+        // `-i` sin salida termina con error a propósito: sólo interesa el log.
+        await withTimeout(ffmpeg.exec(['-i', inputName]), PROBE_TIMEOUT_MS, 'FFmpeg tardó demasiado leyendo la duración')
+            .catch(() => { /* el código de salida da igual */ });
+        return seconds;
+    } finally {
+        ffmpeg.off('log', onLog);
+        await ffmpeg.deleteFile(inputName).catch(() => { /* puede no haberse escrito */ });
+    }
+}
+
+/**
+ * Extrae la pista de audio de un vídeo (o recodifica un audio) con FFmpeg.
+ *
+ * La ruta antigua decodificaba el archivo entero a PCM en memoria con la Web
+ * Audio API: una clase de dos horas en vídeo son ~2,5 GB de Float32 y la
+ * pestaña moría antes de llegar a transcribir nada. FFmpeg trabaja sobre su
+ * propio sistema de archivos y no necesita el audio entero descomprimido en el
+ * heap de JavaScript.
+ *
+ * Sale AAC en contenedor M4A porque el codificador `aac` va compilado en todos
+ * los cores de FFmpeg.wasm; libmp3lame no siempre está.
+ */
+export async function extractAudioTrack(
+    file: File,
+    opts: { sampleRate: number; bitrateKbps: number },
+    onProgress?: (progress: number) => void,
+): Promise<{ file: File }> {
+    const ffmpeg = await loadFFmpeg((_msg, ratio) => onProgress?.(ratio * 0.15));
+
+    const inputName = 'extract_input.' + getOutputExtension(file.type, file.name);
+    const outputName = 'extract_output.m4a';
+
+    const onExecProgress = ({ progress: ratio }: { progress: number }) => {
+        if (Number.isFinite(ratio)) onProgress?.(0.15 + Math.min(1, Math.max(0, ratio)) * 0.8);
+    };
+    ffmpeg.on('progress', onExecProgress);
+
+    try {
+        await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+        const exitCode = await withTimeout(ffmpeg.exec([
+            '-i', inputName,
+            '-vn',                                  // fuera el vídeo
+            '-ac', '1',                             // mono: la voz no gana nada en estéreo
+            '-ar', String(opts.sampleRate),
+            '-c:a', 'aac',
+            '-b:a', `${opts.bitrateKbps}k`,
+            '-y',
+            outputName,
+        ]), EXEC_TIMEOUT_MS, 'FFmpeg tardó demasiado extrayendo el audio');
+
+        if (exitCode !== 0) {
+            throw new Error(`FFmpeg terminó con código ${exitCode} al extraer el audio`);
+        }
+
+        const data = await ffmpeg.readFile(outputName) as Uint8Array;
+        const copy = new Uint8Array(data.length);
+        copy.set(data);
+
+        const outFile = new File(
+            [new Blob([copy], { type: 'audio/mp4' })],
+            file.name.replace(/\.[^.]+$/, '') + '_audio.m4a',
+            { type: 'audio/mp4' },
+        );
+
+        onProgress?.(1);
+        return { file: outFile };
+    } finally {
+        ffmpeg.off('progress', onExecProgress);
+        await ffmpeg.deleteFile(inputName).catch(() => { /* puede no haberse escrito */ });
+        await ffmpeg.deleteFile(outputName).catch(() => { /* puede no haberse creado */ });
+    }
 }
 
 /**

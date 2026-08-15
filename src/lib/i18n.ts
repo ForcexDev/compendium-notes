@@ -28,8 +28,8 @@ export const translations = {
     },
     'features.transcribe.title': { es: 'Transcripción Dual', en: 'Dual Transcription' },
     'features.transcribe.desc': {
-        es: 'Elige entre la velocidad extrema de Whisper + Llama (Groq) o el razonamiento del ecosistema Gemini con 3.5 Flash Lite y 3.1 Flash Lite.',
-        en: 'Choose between Whisper + Llama extreme speed (Groq) or Gemini ecosystem reasoning with 3.5 Flash Lite and 3.1 Flash Lite.',
+        es: 'Elige entre la velocidad extrema de Whisper + GPT-OSS (Groq) o el razonamiento del ecosistema Gemini con 3.5 Flash Lite y 3.1 Flash Lite.',
+        en: 'Choose between Whisper + GPT-OSS extreme speed (Groq) or Gemini ecosystem reasoning with 3.5 Flash Lite and 3.1 Flash Lite.',
     },
     'features.organize.title': { es: 'Organización Inteligente', en: 'Intelligent Organization' },
     'features.organize.desc': {
@@ -91,7 +91,7 @@ export const translations = {
 
     // Groq Card
     'pricing.groq.title': { es: 'Velocidad', en: 'Speed' },
-    'pricing.groq.desc': { es: 'Ideal para clases estándar (Whisper + Llama)', en: 'Ideal for standard classes (Whisper + Llama)' },
+    'pricing.groq.desc': { es: 'Ideal para clases estándar (Whisper + GPT-OSS)', en: 'Ideal for standard classes (Whisper + GPT-OSS)' },
     'pricing.groq.price': { es: '$0', en: '$0' },
     'pricing.groq.f1': { es: 'Modelo Whisper V3 Turbo + Llama', en: 'Whisper V3 Turbo + Llama Model' },
     'pricing.groq.f2': { es: 'Transcripción ultra-rápida', en: 'Ultra-fast transcription' },
@@ -250,6 +250,17 @@ export const translations = {
     'app.config.howto': { es: '¿Cómo obtener mi API key?', en: 'How to get my API key?' },
     'app.config.pdfstyle': { es: 'Estilo de PDF', en: 'PDF Style' },
     'app.config.provider': { es: 'Proveedor de IA', en: 'AI Provider' },
+    'app.config.transcription_model': { es: 'Modelo de transcripción', en: 'Transcription Model' },
+    'app.config.transcription_model.desc': {
+        es: 'Auto empieza por el primero y cambia solo si falla. Con uno fijo, se intenta ese primero.',
+        en: 'Auto starts with the first one and switches only if it fails. A fixed model is simply tried first.'
+    },
+    'app.config.concurrency': { es: 'Fragmentos a la vez', en: 'Chunks at a time' },
+    'app.config.concurrency.desc': {
+        es: 'Las grabaciones largas se parten en fragmentos de 10 minutos. Cuantos más se transcriban a la vez, antes termina — pero el plan gratuito admite 15 peticiones por minuto, y pasarse provoca esperas que lo hacen más lento.',
+        en: 'Long recordings are split into 10-minute chunks. The more you transcribe at once the sooner it finishes — but the free plan allows 15 requests per minute, and going over triggers waits that make it slower.'
+    },
+    'app.config.concurrency.auto': { es: 'Automático', en: 'Automatic' },
     'app.config.groq.get': { es: 'Obtener API Key de Groq', en: 'Get Groq API Key' },
     'app.config.gemini.get': { es: 'Obtener API Key de Gemini', en: 'Get Gemini API Key' },
     'app.config.close': { es: 'Cerrar', en: 'Close' },
